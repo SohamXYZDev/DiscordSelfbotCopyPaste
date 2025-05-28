@@ -225,29 +225,14 @@ client.on('messageCreate', async message => {
         if (message.content && message.content.length > 0) {
             // check if message has "<@" and ">" (its a role ping)
             console.log(message.content)
-            const now = Date.now();
+            if (message.content && message.content.length > 0) {
+            // check if message has "<@" and ">" (its a role ping)
+            console.log(message.content)
             if (message.content.includes("@everyone")) {
                     const newContent = message.content.replace(/@everyone/g, "");
                     await webhook.send({
                         username: "Stinky's Bot",
                         content: newContent,
-                    });
-                    await webhook.send({
-                        username: "Stinky's Bot",
-                        content: "```You can mute pings from this channel by RIGHT CLICK or HOLD DOWN the channel and changing your NOTIFICATION SETTINGS. \n\n DO THE SAME WITH CATEGORY SETTINGS IF YOU WANT TO MUTE THE ENTIRE CATEGORY```",
-                    });
-            } else if (message.content.includes("<@") && message.content.includes(">")) {
-                    console.log("role ping found");
-                    // replace all numbers between with nothing, and replace "<@>" with @everyone 
-                    const newContent = message.content.replace(/<@!?\d+>|<@&\d+>/g, '@everyone');
-                    // send message to webhook
-                    await webhook.send({
-                        username: "Stinky's Bot",
-                        content: newContent,
-                    });
-                    await webhook.send({
-                        username: "Stinky's Bot",
-                        content: "```You can mute pings from this channel by RIGHT CLICK or HOLD DOWN the channel and changing your NOTIFICATION SETTINGS. \n\n DO THE SAME WITH CATEGORY SETTINGS IF YOU WANT TO MUTE THE ENTIRE CATEGORY```",
                     });
             } else {
                 // send message to webhook
@@ -258,7 +243,7 @@ client.on('messageCreate', async message => {
             }
         }
     }
-});
+}});
 // check for edits too
 client.on('messageUpdate', async (oldMessage, newMessage) => {
         
