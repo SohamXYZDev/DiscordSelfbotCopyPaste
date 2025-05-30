@@ -113,7 +113,10 @@ const channelMatchDict = {
     "1364177975917936661": "https://discord.com/api/webhooks/1374779773351628800/XneIV1Bc14kEka883OjXvZf1epjPRkBkS0s2OstNXozIQ3s7wthvawCAVNW6hjEBfhOw",
     "1317447716464361512": "https://discord.com/api/webhooks/1374780093502718194/RKvIAVK4ppOpSKHTYmcbNhzd7sY0B9HmLNtas0ctLPy2PJH8qa2m6TCXd2o_npEDPDen",
     "1317429781628719135": "https://discord.com/api/webhooks/1374780282854576189/vVxBcN1B0UzEkv5MqK4-5VsZoa9kreOIAr2OuH5pvM5V6w4cuq98qkIx_AukcozwHJgA",
-    "1317429915607498864": "https://discord.com/api/webhooks/1374780469287190698/nxhcnfO2x3dlhmipkgjttR3OoNXtvial7MJRkVWoFtEU5VezMT7m8fB75KRxkD1jmDcK"
+    "1317429915607498864": "https://discord.com/api/webhooks/1374780469287190698/nxhcnfO2x3dlhmipkgjttR3OoNXtvial7MJRkVWoFtEU5VezMT7m8fB75KRxkD1jmDcK",
+    "1317448401444405258": "https://discord.com/api/webhooks/1378078216119521421/Lw44J7sixTtc7UgfYfh35n34hBKzMajFR4EtEOcYyWFkWrUyTH0XDO3PytZvlF2TfP3Q",
+    "1354785289364570264": "https://discord.com/api/webhooks/1378078322998644877/Vz4GqMHX2A7NAtLl-jMbShLAjZGqOPovsZk8JQNtHyOnEdw20A88PjfIjTN7JJiz7rLb",
+    "1317476230215503912": "https://discord.com/api/webhooks/1378078591086235778/e1Cf6AlcsQ5p9k2ckaHz0oFB1FlY3i5_fLWw8pB3gX9b6A_WXL8BbHi_1KCZ0jUnm-Bf"
 }
 
 const testWebhook = new WebhookClient({ url: "https://discord.com/api/webhooks/1373625036581244928/rtM31SWhuME6MQYSuKwpyjsMu1SQJ9ncJVwImRKwAe9H5FC-mvpYn17vEf368rn0KiMU" });
@@ -178,6 +181,7 @@ client.on('messageCreate', async message => {
             });
             // delete the output files
             if (containsImage) {
+                // delete the output files
                 fs.unlink('image_white.jpg', (err) => {
                     if (err && err.code !== 'ENOENT') throw err;
                     console.log('image_white.jpg was deleted');
@@ -188,11 +192,11 @@ client.on('messageCreate', async message => {
                 });
             }
             if (containsThumbnail) {
-                fs.unlink('thumbnail_white.jpg', (err) => {
+                await fs.unlink('thumbnail_white.jpg', (err) => {
                     if (err && err.code !== 'ENOENT') throw err;
                     console.log('thumbnail_white.jpg was deleted');
                 });
-                fs.unlink('thumbnail_final.jpg', (err) => {
+                await fs.unlink('thumbnail_final.jpg', (err) => {
                     if (err && err.code !== 'ENOENT') throw err;
                     console.log('thumbnail_final.jpg was deleted');
                 });
@@ -212,6 +216,7 @@ client.on('messageCreate', async message => {
                 username: "Stinky's Bot",
                 files: ['output_final.jpg']
             });
+            // delete the output files
             // delete the output files
             fs.unlink('image_white.jpg', (err) => {
                 if (err && err.code !== 'ENOENT') throw err;
@@ -303,6 +308,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
             });
             // delete the output files
             if (containsImage) {
+                // delete the output files
                 fs.unlink('image_white.jpg', (err) => {
                     if (err && err.code !== 'ENOENT') throw err;
                     console.log('image_white.jpg was deleted');
@@ -313,11 +319,11 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
                 });
             }
             if (containsThumbnail) {
-                fs.unlink('thumbnail_white.jpg', (err) => {
+                await fs.unlink('thumbnail_white.jpg', (err) => {
                     if (err && err.code !== 'ENOENT') throw err;
                     console.log('thumbnail_white.jpg was deleted');
                 });
-                fs.unlink('thumbnail_final.jpg', (err) => {
+                await fs.unlink('thumbnail_final.jpg', (err) => {
                     if (err && err.code !== 'ENOENT') throw err;
                     console.log('thumbnail_final.jpg was deleted');
                 });
@@ -337,6 +343,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
                 username: "Stinky's Bot",
                 files: ['output_final.jpg']
             });
+            // delete the output files
             // delete the output files
             fs.unlink('image_white.jpg', (err) => {
                 if (err && err.code !== 'ENOENT') throw err;
