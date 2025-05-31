@@ -3,6 +3,17 @@ const { Jimp } = require('jimp');
 const fs = require('fs');
 require('dotenv').config();
 
+const fsPromises = require('fs').promises;
+
+async function fileExists(path) {
+    try {
+        await fsPromises.access(path, fs.constants.F_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 async function removeWatermark(input_image, output_image = 'image_white.jpg') {
   try {
     const img = await Jimp.read(input_image);
@@ -140,21 +151,31 @@ client.on('messageCreate', async message => {
 
             // check if embed has image
             if (embed.image) {
-                containsImage = true;
-                console.log("embed image found");
-                // run through removeWatermark
-                await removeWatermark(embed.image.url);
-                // run through addWatermark
-                await addWatermark('image_white.jpg', 'watermark.png', 'image_final.jpg', 0.35);
+                try {
+                    await removeWatermark(embed.image.url);
+                    if (await fileExists('image_white.jpg')) {
+                        await addWatermark('image_white.jpg', 'watermark.png', 'image_final.jpg', 0.35);
+                        containsImage = true;
+                    } else {
+                        console.warn('image_white.jpg not created, skipping watermark.');
+                    }
+                } catch (err) {
+                    console.warn('Failed to process embed image:', err);
+                }
             }
             // check if embed has thumbnail
             if (embed.thumbnail) {
-                containsThumbnail = true;
-                console.log("embed thumbnail found");
-                // run through removeWatermark
-                await removeWatermark(embed.thumbnail.url, 'thumbnail_white.jpg');
-                // run through addWatermark
-                await addWatermark('thumbnail_white.jpg', 'watermark.png', 'thumbnail_final.jpg', 0.35);
+                try {
+                    await removeWatermark(embed.thumbnail.url, 'thumbnail_white.jpg');
+                    if (await fileExists('thumbnail_white.jpg')) {
+                        await addWatermark('thumbnail_white.jpg', 'watermark.png', 'thumbnail_final.jpg', 0.35);
+                        containsThumbnail = true;
+                    } else {
+                        console.warn('thumbnail_white.jpg not created, skipping watermark.');
+                    }
+                } catch (err) {
+                    console.warn('Failed to process embed thumbnail:', err);
+                }
             }
             // make new embed with the images
             const newEmbed = {
@@ -181,51 +202,64 @@ client.on('messageCreate', async message => {
             });
             // delete the output files
             if (containsImage) {
-                // delete the output files
-                fs.unlink('image_white.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('image_white.jpg was deleted');
-                });
-                fs.unlink('image_final.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('output_final.jpg was deleted');
-                });
+                if (await fileExists('image_white.jpg')) {
+                    fs.unlink('image_white.jpg', (err) => {
+                        if (err && err.code !== 'ENOENT') throw err;
+                        console.log('image_white.jpg was deleted');
+                    });
+                }
+                if (await fileExists('image_final.jpg')) {
+                    fs.unlink('image_final.jpg', (err) => {
+                        if (err && err.code !== 'ENOENT') throw err;
+                        console.log('image_final.jpg was deleted');
+                    });
+                }
             }
             if (containsThumbnail) {
-                await fs.unlink('thumbnail_white.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('thumbnail_white.jpg was deleted');
-                });
-                await fs.unlink('thumbnail_final.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('thumbnail_final.jpg was deleted');
-                });
-
+                if (await fileExists('thumbnail_white.jpg')) {
+                    fs.unlink('thumbnail_white.jpg', (err) => {
+                        if (err && err.code !== 'ENOENT') throw err;
+                        console.log('thumbnail_white.jpg was deleted');
+                    });
+                }
+                if (await fileExists('thumbnail_final.jpg')) {
+                    fs.unlink('thumbnail_final.jpg', (err) => {
+                        if (err && err.code !== 'ENOENT') throw err;
+                        console.log('thumbnail_final.jpg was deleted');
+                    });
+                }
             }
         }
         // send attachments
         if (message.attachments.size > 0) {
             console.log("attachment found");
             let attachment = message.attachments.first();
-            // run through removeWatermark
-            await removeWatermark(attachment.url);
-            // run through addWatermark
-            await addWatermark('image_white.jpg', 'watermark.png', 'output_final.jpg', 0.35);
-            // send to webhook
-            await webhook.send({
-                username: "Stinky's Bot",
-                files: ['output_final.jpg']
-            });
-            // delete the output files
-            // delete the output files
-            fs.unlink('image_white.jpg', (err) => {
-                if (err && err.code !== 'ENOENT') throw err;
-                console.log('image_white.jpg was deleted');
-            });
-            fs.unlink('output_final.jpg', (err) => {
-                if (err && err.code !== 'ENOENT') throw err;
-                console.log('output_final.jpg was deleted');
-            });
+            try {
+                await removeWatermark(attachment.url);
+                if (await fileExists('image_white.jpg')) {
+                    await addWatermark('image_white.jpg', 'watermark.png', 'output_final.jpg', 0.35);
+                    await webhook.send({
+                        username: "Stinky's Bot",
+                        files: ['output_final.jpg']
+                    });
+                    if (await fileExists('image_white.jpg')) {
+                        fs.unlink('image_white.jpg', (err) => {
+                            if (err && err.code !== 'ENOENT') throw err;
+                            console.log('image_white.jpg was deleted');
+                        });
+                    }
+                    if (await fileExists('output_final.jpg')) {
+                        fs.unlink('output_final.jpg', (err) => {
+                            if (err && err.code !== 'ENOENT') throw err;
+                            console.log('output_final.jpg was deleted');
+                        });
+                    }
+                } else {
+                    console.warn('image_white.jpg not created for attachment, skipping watermark/send.');
+                }
+            } catch (err) {
+                console.warn('Failed to process attachment:', err);
+            }
         }
         if (message.content && message.content.length > 0) {
             // check if message has "<@" and ">" (its a role ping)
