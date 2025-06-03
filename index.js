@@ -234,31 +234,37 @@ client.on('messageCreate', async message => {
         if (message.attachments.size > 0) {
             console.log("attachment found");
             let attachment = message.attachments.first();
-            try {
-                await removeWatermark(attachment.url);
-                if (await fileExists('image_white.jpg')) {
-                    await addWatermark('image_white.jpg', 'watermark.png', 'output_final.jpg', 0.35);
-                    await webhook.send({
-                        username: "Stinky's Bot",
-                        files: ['output_final.jpg']
-                    });
+
+            // Check if the attachment is a video
+            if (attachment.contentType && attachment.contentType.startsWith('video/')) {
+                console.log(`Video detected: ${attachment.url}, skipping processing.`);
+            } else {
+                try {
+                    await removeWatermark(attachment.url);
                     if (await fileExists('image_white.jpg')) {
-                        fs.unlink('image_white.jpg', (err) => {
-                            if (err && err.code !== 'ENOENT') throw err;
-                            console.log('image_white.jpg was deleted');
+                        await addWatermark('image_white.jpg', 'watermark.png', 'output_final.jpg', 0.35);
+                        await webhook.send({
+                            username: "Stinky's Bot",
+                            files: ['output_final.jpg']
                         });
+                        if (await fileExists('image_white.jpg')) {
+                            fs.unlink('image_white.jpg', (err) => {
+                                if (err && err.code !== 'ENOENT') throw err;
+                                console.log('image_white.jpg was deleted');
+                            });
+                        }
+                        if (await fileExists('output_final.jpg')) {
+                            fs.unlink('output_final.jpg', (err) => {
+                                if (err && err.code !== 'ENOENT') throw err;
+                                console.log('output_final.jpg was deleted');
+                            });
+                        }
+                    } else {
+                        console.warn('image_white.jpg not created for attachment, skipping watermark/send.');
                     }
-                    if (await fileExists('output_final.jpg')) {
-                        fs.unlink('output_final.jpg', (err) => {
-                            if (err && err.code !== 'ENOENT') throw err;
-                            console.log('output_final.jpg was deleted');
-                        });
-                    }
-                } else {
-                    console.warn('image_white.jpg not created for attachment, skipping watermark/send.');
+                } catch (err) {
+                    console.warn('Failed to process attachment:', err);
                 }
-            } catch (err) {
-                console.warn('Failed to process attachment:', err);
             }
         }
         if (message.content && message.content.length > 0) {
