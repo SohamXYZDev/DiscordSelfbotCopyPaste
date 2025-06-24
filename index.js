@@ -129,7 +129,8 @@ const channelMatchDict = {
     "1354785289364570264": "https://discord.com/api/webhooks/1378078322998644877/Vz4GqMHX2A7NAtLl-jMbShLAjZGqOPovsZk8JQNtHyOnEdw20A88PjfIjTN7JJiz7rLb",
     "1317476230215503912": "https://discord.com/api/webhooks/1378078591086235778/e1Cf6AlcsQ5p9k2ckaHz0oFB1FlY3i5_fLWw8pB3gX9b6A_WXL8BbHi_1KCZ0jUnm-Bf",
     "1312708078763901028": "https://discord.com/api/webhooks/1384885354028466359/8N2cQrJVmPItXoaE5StjrwxKsv8edbk1_2QnRxm0auSKFgvJJ-vw0n_FVZaMc5Y0u7bk",
-    "1317448415524950066": "https://discord.com/api/webhooks/1384885632467337216/Cd5O9xk8Fjrf5nQd94NG5qTbadLMr-RZH_dVoV0QRxfZhWI_Jo44y0VKy06XxUvQBwEv"
+    "1317448415524950066": "https://discord.com/api/webhooks/1384885632467337216/Cd5O9xk8Fjrf5nQd94NG5qTbadLMr-RZH_dVoV0QRxfZhWI_Jo44y0VKy06XxUvQBwEv",
+    "1317449091827105854": "https://discord.com/api/webhooks/1387104416984727562/BOWis9_X6_We5icdAoMKTu9OrloxUv6WXyisKW7PF8lK3gCRJZrmEBsNS8Cg-wFduRlJ"
 }
 
 const testWebhook = new WebhookClient({ url: "https://discord.com/api/webhooks/1373625036581244928/rtM31SWhuME6MQYSuKwpyjsMu1SQJ9ncJVwImRKwAe9H5FC-mvpYn17vEf368rn0KiMU" });
