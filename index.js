@@ -50,15 +50,15 @@ async function removeWatermark(input_image, output_image = 'image_white.jpg') {
         const b = this.bitmap.data[idx + 2];
 
         // Detect red or pinkish pixels
-        const isRedDominant = r > 50 && r > g * 1.25 && r > b * 1.25;
+        const isBlueDominant = b > 50 && b > r * 1.25 && b > g * 1.25;
 
-        if (isRedDominant && x >= 10) {
+        if (isBlueDominant && x >= 10) {
             // Get the index of the pixel 10 pixels to the left
             const leftIdx = this.getPixelIndex(x - 10, y);
             this.bitmap.data[idx + 0] = this.bitmap.data[leftIdx + 0];
             this.bitmap.data[idx + 1] = this.bitmap.data[leftIdx + 1];
             this.bitmap.data[idx + 2] = this.bitmap.data[leftIdx + 2];
-        } else if (isRedDominant && x <= this.bitmap.width - 11) {
+        } else if (isBlueDominant && x <= this.bitmap.width - 11) {
             // Replace with color 10 pixels to the right
             const rightIdx = this.getPixelIndex(x + 10, y);
             this.bitmap.data[idx + 0] = this.bitmap.data[rightIdx + 0];
