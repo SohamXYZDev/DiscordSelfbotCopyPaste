@@ -4,6 +4,7 @@ const fs = require('fs');
 require('dotenv').config();
 
 const fsPromises = require('fs').promises;
+const BOT_USERNAME = process.env.BOT_USERNAME || "Bot";
 
 async function fileExists(path) {
     try {
@@ -43,13 +44,13 @@ async function removeWatermark(input_image, output_image = 'image_white.jpg') {
 
     const [mr, mg, mb] = mostCommonColor.split(',').map(Number);
 
-    // 3. Replace red-dominant pixels with the color of the pixel 10 pixels to the left
+    // 3. Replace blue-dominant pixels with the color of the pixel 10 pixels to the left
     img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
         const r = this.bitmap.data[idx + 0];
         const g = this.bitmap.data[idx + 1];
         const b = this.bitmap.data[idx + 2];
 
-        // Detect red or pinkish pixels
+        // Detect blue or bluish pixels
         const isBlueDominant = b > 50 && b > r * 1.25 && b > g * 1.25;
 
         if (isBlueDominant && x >= 10) {
@@ -68,7 +69,7 @@ async function removeWatermark(input_image, output_image = 'image_white.jpg') {
     });
 
     await img.write(output_image);
-    console.log(`✔ All red pixels replaced with the color of the pixel 10 pixels to the left`);
+    console.log(`✔ All blue pixels replaced with the color of the pixel 10 pixels to the left`);
   } catch (err) {
     console.error('❌ Error:', err);
   }
@@ -104,37 +105,31 @@ async function addWatermark(baseImagePath, watermarkPath, outputPath, opacity = 
     }
 }
 
-const client = new Client();
-
 // format= {their channel id: my channel webhook}
 const channelMatchDict = {
-    "1317453482198044682": "https://discord.com/api/webhooks/1372557360387854347/Zzgj-2eehdSrF_FytyzZu39Gq7RfDIL7PQiinc-Jp4fZS95tZFuwCGLYp_GS8kozeBz7",
-    "1317423635799212062": "https://discord.com/api/webhooks/1372574857862320198/wcueRIGSyEQlyCMdW4tZgaCMP71F2webaUB2YDQ3nZAkFN5pMxaJF7CMP7w13pEmflpp", 
-    "1317423921662005289": "https://discord.com/api/webhooks/1372557753163321364/mN8_58lc2YdGPP4g_m0SO_QpPlZ2N9qJGJRJu38r0qhTiKJhDfT7XMyt9MknFkecQei_",
-    "1317431852864372797": "https://discord.com/api/webhooks/1372557753884606646/JRrqFlv0ohEmNfC-t6RL7lvvl53wZmlGhjva5l4UykLx9DdcdNO-ckhgYwTs2bJO6ulU",
-    "1317437878615412746": "https://discord.com/api/webhooks/1372557755516190812/Pxigc_Aziw3ipEEB8D4IzTaXkK3_fLldJhBoooIneLeDofq3lAEevDaZKfixK5xngxfR",
-    "1317451047119224852": "https://discord.com/api/webhooks/1372576150232104992/-oYYKTLi7byzF99dk0KA48a1G_tDEEaZ3c7bnU9hZO5zf3bn0pEbY3QNvSi04XY1x1Rz",
-    "1278933083327959101": "https://discord.com/api/webhooks/1372557759223955626/sphJX5VAjmVLVhL_88XMzA21zxUNb-2Xri5VPPazyTjm2CBPPW8HVFbt8OjEOkAUj-Dg",
-    "1317465860536926271": "https://discord.com/api/webhooks/1372557757395370095/-FTAX5U2dJo83mgt07f9-DSj8m1wL6xIhL-CGqxELcSjh9XhoTQjaOGgS2f5x-d6ShTv",
-    "1351264185044177050": "https://discord.com/api/webhooks/1372557761283358750/SLzsrq8AEjjMoG_Xgc_vLqxgkbhpuXiFdXc6PYsjpif7uMY3vQ79J1nk-RrGpx-89q9O",
-    "1317463733655572500": "https://discord.com/api/webhooks/1374778747898695770/rSV1XcXr0LsfJ1kvV3dVIf3eQwhhq1W00kfePBpoJMtLiny1uWTVeVXEig25KRrbpDhx",
-    "1317463749174759444": "https://discord.com/api/webhooks/1374778945857257646/ljfvSypuAIA1Gx0_hp_0K6ZPFCK3Lim0_kbuV61oCN46-chzs7xM7PJi1BLAx3QcEMTk",
-    "1317463761178722445": "https://discord.com/api/webhooks/1374779095283404881/pUDk3hfOwJeOq43dR20grZoM-6N9Y1KdRDHgQngiWfI5Ra5ru8IvInDlhE2VS0VSa3sm",
-    "1317463834037977098": "https://discord.com/api/webhooks/1374779251974471710/TOFOSZj8mNZbhq6tNv0RRcFHyxTB3NIWM7AhnviNnmJnBfbPpgRy-NAioOGY9fED-I3S",
-    "1364177975917936661": "https://discord.com/api/webhooks/1374779773351628800/XneIV1Bc14kEka883OjXvZf1epjPRkBkS0s2OstNXozIQ3s7wthvawCAVNW6hjEBfhOw",
-    "1317447716464361512": "https://discord.com/api/webhooks/1374780093502718194/RKvIAVK4ppOpSKHTYmcbNhzd7sY0B9HmLNtas0ctLPy2PJH8qa2m6TCXd2o_npEDPDen",
-    "1317429781628719135": "https://discord.com/api/webhooks/1374780282854576189/vVxBcN1B0UzEkv5MqK4-5VsZoa9kreOIAr2OuH5pvM5V6w4cuq98qkIx_AukcozwHJgA",
-    "1317429915607498864": "https://discord.com/api/webhooks/1374780469287190698/nxhcnfO2x3dlhmipkgjttR3OoNXtvial7MJRkVWoFtEU5VezMT7m8fB75KRxkD1jmDcK",
-    "1317448401444405258": "https://discord.com/api/webhooks/1378078216119521421/Lw44J7sixTtc7UgfYfh35n34hBKzMajFR4EtEOcYyWFkWrUyTH0XDO3PytZvlF2TfP3Q",
-    "1354785289364570264": "https://discord.com/api/webhooks/1378078322998644877/Vz4GqMHX2A7NAtLl-jMbShLAjZGqOPovsZk8JQNtHyOnEdw20A88PjfIjTN7JJiz7rLb",
-    "1317476230215503912": "https://discord.com/api/webhooks/1378078591086235778/e1Cf6AlcsQ5p9k2ckaHz0oFB1FlY3i5_fLWw8pB3gX9b6A_WXL8BbHi_1KCZ0jUnm-Bf",
-    "1312708078763901028": "https://discord.com/api/webhooks/1384885354028466359/8N2cQrJVmPItXoaE5StjrwxKsv8edbk1_2QnRxm0auSKFgvJJ-vw0n_FVZaMc5Y0u7bk",
-    "1317448415524950066": "https://discord.com/api/webhooks/1384885632467337216/Cd5O9xk8Fjrf5nQd94NG5qTbadLMr-RZH_dVoV0QRxfZhWI_Jo44y0VKy06XxUvQBwEv",
-    "1317449091827105854": "https://discord.com/api/webhooks/1387104416984727562/BOWis9_X6_We5icdAoMKTu9OrloxUv6WXyisKW7PF8lK3gCRJZrmEBsNS8Cg-wFduRlJ",
-    "1317467820233064500": "https://discord.com/api/webhooks/1390061501334818908/SRfofAAfwwpxTR2yzQPbFFSd8rFynNT_FCnR2k3zUlMG5EclznDpaYHdQGdaCXcbstKE" // sammysmacks plays
+    [process.env.CHANNEL_1]: process.env.WEBHOOK_1,
+    [process.env.CHANNEL_2]: process.env.WEBHOOK_2, 
+    [process.env.CHANNEL_3]: process.env.WEBHOOK_3,
+    [process.env.CHANNEL_4]: process.env.WEBHOOK_4,
+    [process.env.CHANNEL_5]: process.env.WEBHOOK_5,
+    [process.env.CHANNEL_6]: process.env.WEBHOOK_6,
+    [process.env.CHANNEL_7]: process.env.WEBHOOK_7,
+    [process.env.CHANNEL_8]: process.env.WEBHOOK_8,
+    [process.env.CHANNEL_9]: process.env.WEBHOOK_9,
+    [process.env.CHANNEL_10]: process.env.WEBHOOK_10,
+    [process.env.CHANNEL_11]: process.env.WEBHOOK_11,
+    [process.env.CHANNEL_12]: process.env.WEBHOOK_12,
+    [process.env.CHANNEL_13]: process.env.WEBHOOK_13,
+    [process.env.CHANNEL_14]: process.env.WEBHOOK_14,
+    [process.env.CHANNEL_15]: process.env.WEBHOOK_15,
+    [process.env.CHANNEL_16]: process.env.WEBHOOK_16,
+    [process.env.CHANNEL_17]: process.env.WEBHOOK_17,
+    [process.env.CHANNEL_18]: process.env.WEBHOOK_18,
+    [process.env.CHANNEL_19]: process.env.WEBHOOK_19,
+    [process.env.CHANNEL_20]: process.env.WEBHOOK_20,
 }
 
-const testWebhook = new WebhookClient({ url: "https://discord.com/api/webhooks/1373625036581244928/rtM31SWhuME6MQYSuKwpyjsMu1SQJ9ncJVwImRKwAe9H5FC-mvpYn17vEf368rn0KiMU" });
+const testWebhook = new WebhookClient({ url: process.env.TEST_WEBHOOK });
 
 client.once('ready', async () => { 
     console.log(`Logged in as ${client.user.tag}`);
@@ -197,7 +192,7 @@ client.on('messageCreate', async message => {
             };
             // send to webhook
             await webhook.send({
-                username: "Stinky's Bot",
+                username: BOT_USERNAME,
                 embeds: [newEmbed],
                 files: [
                     ...(containsImage ? ['image_final.jpg'] : []),
@@ -247,7 +242,7 @@ client.on('messageCreate', async message => {
                         if (await fileExists('image_white.jpg')) {
                             await addWatermark('image_white.jpg', 'watermark.png', 'output_final.jpg', 0.35);
                             await webhook.send({
-                                username: "Stinky's Bot",
+                                username: BOT_USERNAME,
                                 files: ['output_final.jpg']
                             });
                             if (await fileExists('image_white.jpg')) {
@@ -280,13 +275,13 @@ client.on('messageCreate', async message => {
             if (message.content.includes("@everyone")) {
                     const newContent = message.content.replace(/@everyone/g, "");
                     await webhook.send({
-                        username: "Stinky's Bot",
+                        username: BOT_USERNAME,
                         content: newContent,
                     });
             } else {
                 // send message to webhook
                 await webhook.send({
-                    username: "Stinky's Bot",
+                    username: BOT_USERNAME,
                     content: message.content,
                 });
             }
@@ -343,7 +338,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
             };
             // send to webhook
             await webhook.send({
-                username: "Stinky's Bot",
+                username: BOT_USERNAME,
                 embeds: [newEmbed],
                 files: [
                     ...(containsImage ? ['image_final.jpg'] : []),
@@ -384,7 +379,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
             
             // send to webhook
             await webhook.send({
-                username: "Stinky's Bot",
+                username: BOT_USERNAME,
                 files: ['output_final.jpg']
             });
             // delete the output files
@@ -402,7 +397,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 
         if (newMessage.content && newMessage.content.length > 0) {
             await webhook.send({
-                username: "Stinky's Bot",
+                username: BOT_USERNAME,
                 content: newMessage.content,
             });
         }
