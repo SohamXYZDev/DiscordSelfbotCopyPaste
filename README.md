@@ -5,6 +5,8 @@ A Discord selfbot that monitors specified channels and mirrors messages to your 
 ## ⚠️ IMPORTANT DISCLAIMER
 
 **This project uses a Discord selfbot, which violates Discord's Terms of Service. Use at your own risk. Your account may be banned if detected by Discord.**
+**Therefore,**
+**This code is served "as-is" and for experimentation and learning purposes only.**
 
 ## Features
 
