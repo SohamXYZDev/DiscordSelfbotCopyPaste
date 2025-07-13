@@ -219,6 +219,15 @@ All temporary files are automatically deleted after processing.
 
 This project is for educational purposes only. The authors are not responsible for any consequences of using this software, including but not limited to Discord account suspension or termination.
 
+## Socials
+
+Created & maintained by Soham Mitra (SohamXYZ)
+
+- 🌐 Website: [https://sohamxyz.com](https://sohamxyz.com)
+- 📧 Email: soham@sohamxyz.com
+- 💬 Discord: sohamxyz
+- 🧠 discord bot/automation inquiries welcome!
+
 ## Contributing
 
 1. Fork the repository
