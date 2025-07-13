@@ -6,6 +6,10 @@ require('dotenv').config();
 const fsPromises = require('fs').promises;
 const BOT_USERNAME = process.env.BOT_USERNAME || "Bot";
 
+// Parse watermark color from environment variable (default to blue)
+const WATERMARK_COLOR = process.env.WATERMARK_COLOR || "0,100,255";
+const [WATERMARK_R, WATERMARK_G, WATERMARK_B] = WATERMARK_COLOR.split(',').map(Number);
+
 async function fileExists(path) {
     try {
         await fsPromises.access(path, fs.constants.F_OK);
@@ -44,22 +48,27 @@ async function removeWatermark(input_image, output_image = 'image_white.jpg') {
 
     const [mr, mg, mb] = mostCommonColor.split(',').map(Number);
 
-    // 3. Replace blue-dominant pixels with the color of the pixel 10 pixels to the left
+    // 3. Replace watermark-colored pixels with the color of the pixel 10 pixels to the left
     img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
         const r = this.bitmap.data[idx + 0];
         const g = this.bitmap.data[idx + 1];
         const b = this.bitmap.data[idx + 2];
 
-        // Detect blue or bluish pixels
-        const isBlueDominant = b > 50 && b > r * 1.25 && b > g * 1.25;
+        // Detect watermark pixels based on configured color
+        // Check if the pixel is close to the watermark color (with some tolerance)
+        const colorTolerance = 30; // Adjust tolerance as needed
+        const isWatermarkColor = 
+            Math.abs(r - WATERMARK_R) <= colorTolerance &&
+            Math.abs(g - WATERMARK_G) <= colorTolerance &&
+            Math.abs(b - WATERMARK_B) <= colorTolerance;
 
-        if (isBlueDominant && x >= 10) {
+        if (isWatermarkColor && x >= 10) {
             // Get the index of the pixel 10 pixels to the left
             const leftIdx = this.getPixelIndex(x - 10, y);
             this.bitmap.data[idx + 0] = this.bitmap.data[leftIdx + 0];
             this.bitmap.data[idx + 1] = this.bitmap.data[leftIdx + 1];
             this.bitmap.data[idx + 2] = this.bitmap.data[leftIdx + 2];
-        } else if (isBlueDominant && x <= this.bitmap.width - 11) {
+        } else if (isWatermarkColor && x <= this.bitmap.width - 11) {
             // Replace with color 10 pixels to the right
             const rightIdx = this.getPixelIndex(x + 10, y);
             this.bitmap.data[idx + 0] = this.bitmap.data[rightIdx + 0];
@@ -69,7 +78,7 @@ async function removeWatermark(input_image, output_image = 'image_white.jpg') {
     });
 
     await img.write(output_image);
-    console.log(`✔ All blue pixels replaced with the color of the pixel 10 pixels to the left`);
+    console.log(`✔ All watermark pixels (${WATERMARK_COLOR}) replaced with adjacent colors`);
   } catch (err) {
     console.error('❌ Error:', err);
   }
@@ -130,6 +139,14 @@ const channelMatchDict = {
 }
 
 const testWebhook = new WebhookClient({ url: process.env.TEST_WEBHOOK });
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
+});
 
 client.once('ready', async () => { 
     console.log(`Logged in as ${client.user.tag}`);

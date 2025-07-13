@@ -9,7 +9,8 @@ A Discord selfbot that monitors specified channels and mirrors messages to your 
 ## Features
 
 - 🔄 **Message Mirroring**: Automatically forwards messages from monitored channels to your server
-- 🖼️ **Image Processing**: Removes blue-dominant watermarks from images and replaces them with your own watermark
+- 🖼️ **Image Processing**: Removes configurable-color watermarks from images and replaces them with your own watermark
+- 🎨 **Configurable Watermark Detection**: Specify any RGB color to detect and remove
 - 📎 **Attachment Support**: Processes image attachments and embeds
 - ✏️ **Edit Tracking**: Monitors message edits and updates mirrored messages
 - 🎭 **Custom Branding**: Replaces watermarks with your own branding
@@ -20,8 +21,8 @@ A Discord selfbot that monitors specified channels and mirrors messages to your 
 ### Watermark Removal Algorithm
 
 1. **Color Analysis**: Scans the image to find the most frequent color
-2. **Blue Detection**: Identifies blue-dominant pixels (watermark areas)
-3. **Pixel Replacement**: Replaces blue pixels with colors from adjacent areas (10 pixels left/right)
+2. **Watermark Detection**: Identifies pixels matching the configured watermark color (with tolerance)
+3. **Pixel Replacement**: Replaces watermark pixels with colors from adjacent areas (10 pixels left/right)
 
 ### Watermark Addition
 
@@ -64,6 +65,11 @@ TOKEN=your_discord_token_here
 # Bot Display Name
 BOT_USERNAME=Your Bot or Webhook Name
 
+# Watermark Color Detection (RGB values separated by commas)
+# This is the color that will be detected and removed from images
+# Default: 0,100,255 (blue) - Change to match the watermark color you want to remove
+WATERMARK_COLOR=0,100,255
+
 # Test Webhook (Optional)
 TEST_WEBHOOK=https://discord.com/api/webhooks/your_test_webhook_here
 
@@ -85,6 +91,22 @@ The bot maps source channels to destination webhooks:
 - `CHANNEL_1` → `WEBHOOK_1`
 - `CHANNEL_2` → `WEBHOOK_2`
 - And so on...
+
+### Watermark Color Configuration
+
+The `WATERMARK_COLOR` environment variable allows you to specify which color should be detected and removed from images:
+
+- **Format**: RGB values separated by commas (e.g., `255,0,0` for red)
+- **Default**: `0,100,255` (blue)
+- **Tolerance**: The bot uses a tolerance of ±30 for each RGB component to account for slight color variations
+- **Examples**:
+  - Blue watermarks: `0,100,255`
+  - Red watermarks: `255,0,0`
+  - Green watermarks: `0,255,0`
+  - White watermarks: `255,255,255`
+  - Black watermarks: `0,0,0`
+
+To find the exact color of a watermark, you can use any color picker tool or image editing software.
 
 ## Usage
 
@@ -155,7 +177,7 @@ All temporary files are automatically deleted after processing.
 
 - **Discord ToS**: Using selfbots violates Discord's Terms of Service
 - **Rate Limits**: Subject to Discord's API rate limits
-- **Watermark Detection**: Only removes blue-dominant watermarks
+- **Watermark Detection**: Only removes pixels matching the configured `WATERMARK_COLOR`
 - **Image Quality**: Processing may affect image quality
 - **Channel Limit**: Maximum 20 monitored channels
 
@@ -172,9 +194,16 @@ All temporary files are automatically deleted after processing.
 
    - Verify `watermark.png` exists in the project root
    - Check console for error messages
-   - Ensure the watermark is blue-dominant for removal
+   - Ensure the `WATERMARK_COLOR` matches the watermark in your images
+   - Try adjusting the RGB values in `WATERMARK_COLOR` to better match the watermark
 
-3. **Webhooks failing**
+3. **Watermark not being removed**
+
+   - Use a color picker tool to find the exact RGB values of the watermark
+   - Update `WATERMARK_COLOR` in your `.env` file with the correct RGB values
+   - The bot uses a tolerance of ±30 for each RGB component, so exact matches aren't required
+
+4. **Webhooks failing**
    - Verify webhook URLs are correct and active
    - Check webhook permissions
 
