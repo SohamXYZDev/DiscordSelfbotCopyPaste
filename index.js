@@ -19,6 +19,9 @@ async function fileExists(path) {
     }
 }
 
+// only works for simple/solid color watermarks
+// idea: find most common color in image, assume its the background color
+// then replace all pixels that are close to the watermark color with the color of the pixel 10 pixels to the left (or right if too close to left edge)
 async function removeWatermark(input_image, output_image = 'image_white.jpg') {
   try {
     const img = await Jimp.read(input_image);
