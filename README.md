@@ -1,6 +1,6 @@
-# Discord Message Mirror Bot with Watermark Processing
+# Discord Message Mirror Bot with Component Interaction
 
-A Discord selfbot that monitors specified channels and mirrors messages to your own server via webhooks, with automatic watermark removal and replacement functionality for images.
+A Discord selfbot that monitors specified channels and mirrors messages to your own server via webhooks, with automatic Discord component (button) detection and interaction capabilities.
 
 ## ⚠️ IMPORTANT DISCLAIMER
 
@@ -11,26 +11,27 @@ A Discord selfbot that monitors specified channels and mirrors messages to your 
 ## Features
 
 - 🔄 **Message Mirroring**: Automatically forwards messages from monitored channels to your server
-- 🖼️ **Image Processing**: Removes configurable-color watermarks from images and replaces them with your own watermark
-- 🎨 **Configurable Watermark Detection**: Specify any RGB color to detect and remove
-- 📎 **Attachment Support**: Processes image attachments and embeds
+- 🖼️ **Image Forwarding**: Forwards images from embeds and attachments
+- � **Component Interaction**: Automatically detects and clicks Discord buttons (especially "View Slip" buttons)
+- 📎 **Attachment Support**: Forwards image attachments and embeds
 - ✏️ **Edit Tracking**: Monitors message edits and updates mirrored messages
-- 🎭 **Custom Branding**: Replaces watermarks with your own branding
-- 📺 **Video Handling**: Skips video processing to avoid errors
+- 🎭 **Custom Branding**: Uses configurable bot username for forwarded messages
+- � **Debug Logging**: Detailed component detection and interaction logging
 
 ## How It Works
 
-### Watermark Removal Algorithm
+### Component Detection
 
-1. **Color Analysis**: Scans the image to find the most frequent color
-2. **Watermark Detection**: Identifies pixels matching the configured watermark color (with tolerance)
-3. **Pixel Replacement**: Replaces watermark pixels with colors from adjacent areas (10 pixels left/right)
+1. **Button Scanning**: Monitors all messages for Discord components (buttons, select menus, etc.)
+2. **Auto-Interaction**: Automatically clicks buttons with specific custom IDs (like "view_slip")
+3. **Detailed Logging**: Shows component properties, types, styles, and interaction results
 
-### Watermark Addition
+### Message Forwarding
 
-- Adds your custom watermark (`watermark.png`) to processed images
-- Configurable opacity (default: 35%)
-- Positioned with proper scaling and margins
+- Preserves embed structure (title, description, color, footer, etc.)
+- Forwards images both within embeds and as separate attachments
+- Handles @everyone mentions by removing them
+- Supports up to 20 channel-to-webhook mappings
 
 ## Installation
 
@@ -52,10 +53,6 @@ A Discord selfbot that monitors specified channels and mirrors messages to your 
    - Copy `.env.example` to `.env` (if available) or create a new `.env` file
    - Configure all required variables (see Configuration section)
 
-4. **Add your watermark**
-   - Place your watermark image as `watermark.png` in the project root
-   - Recommended: PNG format with transparency
-
 ## Configuration
 
 ### Required Environment Variables
@@ -64,26 +61,29 @@ A Discord selfbot that monitors specified channels and mirrors messages to your 
 # Discord Bot Token (Your account token)
 TOKEN=your_discord_token_here
 
-# Bot Display Name
+# Bot Display Name (Optional, defaults to "Bot")
 BOT_USERNAME=Your Bot or Webhook Name
 
-# Watermark Color Detection (RGB values separated by commas)
-# This is the color that will be detected and removed from images
-# Default: 0,100,255 (blue) - Change to match the watermark color you want to remove
-WATERMARK_COLOR=0,100,255
-
-# Test Webhook (Optional)
+# Test Webhook (Optional - only needed for testing)
 TEST_WEBHOOK=https://discord.com/api/webhooks/your_test_webhook_here
 
-# Channel IDs to monitor (up to 20 channels)
+# Channel IDs to monitor (you only need the ones you want to use)
 CHANNEL_1=channel_id_to_monitor
 CHANNEL_2=another_channel_id
-# ... up to CHANNEL_20
+# ... up to CHANNEL_20 (only define what you need)
 
-# Corresponding webhook URLs for your server (up to 20 webhooks)
+# Corresponding webhook URLs for your server
 WEBHOOK_1=https://discord.com/api/webhooks/your_webhook_url
 WEBHOOK_2=https://discord.com/api/webhooks/another_webhook_url
-# ... up to WEBHOOK_20
+# ... up to WEBHOOK_20 (only define what you need)
+CHANNEL_2=another_channel_id
+CHANNEL_2=another_channel_id
+# ... up to CHANNEL_20 (only define what you need)
+
+# Corresponding webhook URLs for your server
+WEBHOOK_1=https://discord.com/api/webhooks/your_webhook_url
+WEBHOOK_2=https://discord.com/api/webhooks/another_webhook_url
+# ... up to WEBHOOK_20 (only define what you need)
 ```
 
 ### Channel-Webhook Mapping
@@ -94,21 +94,13 @@ The bot maps source channels to destination webhooks:
 - `CHANNEL_2` → `WEBHOOK_2`
 - And so on...
 
-### Watermark Color Configuration
+### Component Interaction Configuration
 
-The `WATERMARK_COLOR` environment variable allows you to specify which color should be detected and removed from images:
+The bot automatically detects and interacts with Discord components:
 
-- **Format**: RGB values separated by commas (e.g., `255,0,0` for red)
-- **Default**: `0,100,255` (blue)
-- **Tolerance**: The bot uses a tolerance of ±30 for each RGB component to account for slight color variations
-- **Examples**:
-  - Blue watermarks: `0,100,255`
-  - Red watermarks: `255,0,0`
-  - Green watermarks: `0,255,0`
-  - White watermarks: `255,255,255`
-  - Black watermarks: `0,0,0`
-
-To find the exact color of a watermark, you can use any color picker tool or image editing software.
+- **Auto-Click**: Automatically clicks buttons with `custom_id: "view_slip"`
+- **Logging**: Shows detailed information about all detected components
+- **Fallback Methods**: Uses multiple interaction methods for better compatibility
 
 ## Usage
 
@@ -121,11 +113,30 @@ To find the exact color of a watermark, you can use any color picker tool or ima
 2. **Monitor the console**
 
    - The bot will log when it's ready: `Logged in as YourUsername#1234`
-   - Processing messages will show status updates
+   - Component detection will show detailed information about Discord buttons
+   - Auto-clicking will show success/failure messages
 
 3. **Test functionality**
-   - Send a message with an image in a monitored channel
-   - Check your destination channel for the mirrored message with processed image
+   - Send a message with an embed/image in a monitored channel
+   - Check your destination channel for the mirrored message
+   - Watch for component interaction logs when buttons appear
+
+## Console Output Examples
+
+### Component Detection
+
+```
+=== MESSAGE RECEIVED ===
+Channel ID: 1415090591447908499
+Message ID: 1415728338361651432
+Author: someuser#1234
+
+=== COMPONENTS FOUND ===
+Component: View Slip (ID: view_slip)
+Component: Show All Slips (ID: show_all)
+🎯 FOUND VIEW_SLIP BUTTON - ATTEMPTING TO CLICK
+✅ Successfully clicked view_slip button
+```
 
 ## File Structure
 
@@ -134,7 +145,7 @@ DiscordSelfbotCopyPaste/
 ├── index.js           # Main bot code
 ├── package.json       # Dependencies
 ├── .env              # Configuration file
-├── watermark.png     # Your custom watermark image
+├── .env.example      # Example configuration
 └── README.md         # This file
 ```
 
@@ -143,35 +154,32 @@ DiscordSelfbotCopyPaste/
 ### Dependencies
 
 - `discord.js-selfbot-v13` - Discord selfbot functionality
-- `jimp` - Image processing
 - `dotenv` - Environment variable management
 - `axios` - HTTP requests
-- `discord.js` - Discord API types
 
-### Temporary Files
+### Component Interaction
 
-The bot creates temporary files during processing:
+The bot automatically:
 
-- `image_white.jpg` - Watermark-removed image
-- `image_final.jpg` - Final image with your watermark
-- `thumbnail_white.jpg` - Processed thumbnail
-- `thumbnail_final.jpg` - Final thumbnail
-- `output_final.jpg` - Processed attachment
-
-All temporary files are automatically deleted after processing.
+- Detects Discord components (buttons, select menus)
+- Logs detailed component information
+- Auto-clicks buttons with `custom_id: "view_slip"`
+- Uses fallback interaction methods for compatibility
 
 ## Supported Content Types
 
 ### ✅ Supported
 
 - Text messages
-- Image attachments (PNG, JPG, GIF)
+- Image attachments (PNG, JPG, GIF, etc.)
 - Embed images and thumbnails
-- Message edits
+- Discord components (buttons, select menus)
+- Message edits and updates
+- Message edits and updates
 
 ### ❌ Not Supported
 
-- Video files (skipped automatically)
+- Video files (forwarded but not processed)
 - Audio files
 - Other file types
 
@@ -179,9 +187,9 @@ All temporary files are automatically deleted after processing.
 
 - **Discord ToS**: Using selfbots violates Discord's Terms of Service
 - **Rate Limits**: Subject to Discord's API rate limits
-- **Watermark Detection**: Only removes pixels matching the configured `WATERMARK_COLOR`
-- **Image Quality**: Processing may affect image quality
+- **Component Access**: Can only interact with components the user account has access to
 - **Channel Limit**: Maximum 20 monitored channels
+- **Webhook Validation**: Only creates webhooks for valid URLs
 
 ## Troubleshooting
 
@@ -190,36 +198,50 @@ All temporary files are automatically deleted after processing.
 1. **Bot won't start**
 
    - Check if your token is valid
-   - Ensure all required environment variables are set
+   - Ensure webhook URLs are valid Discord webhook URLs
+   - Verify environment variables are set correctly
 
-2. **Images not processing**
+2. **Components not detected**
 
-   - Verify `watermark.png` exists in the project root
-   - Check console for error messages
-   - Ensure the `WATERMARK_COLOR` matches the watermark in your images
-   - Try adjusting the RGB values in `WATERMARK_COLOR` to better match the watermark
+   - Check console logs for component detection messages
+   - Ensure the bot has access to the channel
+   - Verify the message actually contains components
 
-3. **Watermark not being removed**
+3. **Button clicks failing**
 
-   - Use a color picker tool to find the exact RGB values of the watermark
-   - Update `WATERMARK_COLOR` in your `.env` file with the correct RGB values
-   - The bot uses a tolerance of ±30 for each RGB component, so exact matches aren't required
+   - Check if the bot has permission to interact with components
+   - Verify the component's `custom_id` matches "view_slip"
+   - Look for error messages in console logs
 
-4. **Webhooks failing**
-   - Verify webhook URLs are correct and active
-   - Check webhook permissions
+4. **Images not forwarding**
+
+   - Check if images are being detected in console logs
+   - Verify webhook has permission to send files
+   - Ensure image URLs are accessible
 
 ### Error Messages
 
-- `image_white.jpg not created` - Watermark removal failed
-- `Failed to process attachment` - Image processing error
-- `Video detected, skipping processing` - Video files are intentionally skipped
+- `WEBHOOK_URL_INVALID` - Check your webhook URLs in .env file
+- `Failed to click button` - Component interaction failed, check permissions
+- `No view_slip button found` - The message doesn't contain the expected button
+- `No components detected` - The message doesn't have any interactive elements
+
+### Debug Information
+
+The bot provides detailed logging for troubleshooting:
+
+- **Message Reception**: Shows when messages are received and their basic info
+- **Component Detection**: Lists all components found in messages
+- **Interaction Attempts**: Shows success/failure of button clicks
+- **Channel Filtering**: Only logs information for monitored channels
 
 ## Legal Notice
 
 This project is for educational purposes only. The authors are not responsible for any consequences of using this software, including but not limited to Discord account suspension or termination.
 
-## Socials
+## Contributing
+
+Feel free to submit issues, feature requests, or pull requests to improve the bot's functionality.
 
 Created & maintained by Soham Mitra (SohamXYZ)
 

@@ -1,154 +1,101 @@
-const { Client, GatewayIntentBits, WebhookClient } = require('discord.js-selfbot-v13');
-const { Jimp } = require('jimp');
+const { Client, WebhookClient } = require('discord.js-selfbot-v13');
 const fs = require('fs');
+const axios = require('axios');
 require('dotenv').config();
 
-const fsPromises = require('fs').promises;
 const BOT_USERNAME = process.env.BOT_USERNAME || "Bot";
 
-// Parse watermark color from environment variable (default to blue)
-const WATERMARK_COLOR = process.env.WATERMARK_COLOR || "0,100,255";
-const [WATERMARK_R, WATERMARK_G, WATERMARK_B] = WATERMARK_COLOR.split(',').map(Number);
-
-async function fileExists(path) {
-    try {
-        await fsPromises.access(path, fs.constants.F_OK);
-        return true;
-    } catch {
-        return false;
+// Helper function to extract slip identifiers for your mapping system
+function extractSlipIdentifiers(message) {
+    const identifiers = {
+        messageId: message.id,
+        channelId: message.channel.id,
+        timestamp: message.createdTimestamp,
+        cdnParams: {},
+        interactionId: message.interaction?.id || null,
+        commandName: message.interaction?.name || null,
+        triggerUser: message.interaction?.user?.username || null
+    };
+    
+    // Extract CDN parameters from image URLs (these change per slip)
+    if (message.embeds && message.embeds.length > 0) {
+        message.embeds.forEach(embed => {
+            if (embed.image?.url) {
+                try {
+                    const url = new URL(embed.image.url);
+                    identifiers.cdnParams = Object.fromEntries(url.searchParams);
+                    
+                    // Extract attachment ID from Discord CDN path
+                    const pathParts = url.pathname.split('/');
+                    const attachmentId = pathParts.find(part => /^\d{17,19}$/.test(part));
+                    if (attachmentId) {
+                        identifiers.attachmentId = attachmentId;
+                    }
+                } catch (e) {
+                    console.log('Failed to parse image URL:', e.message);
+                }
+            }
+        });
     }
+    
+    console.log('📋 Slip Identifiers Extracted:', identifiers);
+    return identifiers;
 }
 
 // only works for simple/solid color watermarks
 // idea: find most common color in image, assume its the background color
 // then replace all pixels that are close to the watermark color with the color of the pixel 10 pixels to the left (or right if too close to left edge)
-async function removeWatermark(input_image, output_image = 'image_white.jpg') {
-  try {
-    const img = await Jimp.read(input_image);
-
-    // 1. Count color frequency
-    const colorMap = new Map();
-
-    img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
-      const r = this.bitmap.data[idx + 0];
-      const g = this.bitmap.data[idx + 1];
-      const b = this.bitmap.data[idx + 2];
-
-      const key = `${r},${g},${b}`;
-      colorMap.set(key, (colorMap.get(key) || 0) + 1);
-    });
-
-    // 2. Find the most frequent color
-    let mostCommonColor = '255,255,255'; // fallback
-    let maxCount = 0;
-
-    for (const [color, count] of colorMap.entries()) {
-      if (count > maxCount) {
-        maxCount = count;
-        mostCommonColor = color;
-      }
-    }
-
-    const [mr, mg, mb] = mostCommonColor.split(',').map(Number);
-
-    // 3. Replace watermark-colored pixels with the color of the pixel 10 pixels to the left
-    img.scan(0, 0, img.bitmap.width, img.bitmap.height, function (x, y, idx) {
-        const r = this.bitmap.data[idx + 0];
-        const g = this.bitmap.data[idx + 1];
-        const b = this.bitmap.data[idx + 2];
-
-        // Detect watermark pixels based on configured color
-        // Check if the pixel is close to the watermark color (with some tolerance)
-        const colorTolerance = 30; // Adjust tolerance as needed
-        const isWatermarkColor = 
-            Math.abs(r - WATERMARK_R) <= colorTolerance &&
-            Math.abs(g - WATERMARK_G) <= colorTolerance &&
-            Math.abs(b - WATERMARK_B) <= colorTolerance;
-
-        if (isWatermarkColor && x >= 10) {
-            // Get the index of the pixel 10 pixels to the left
-            const leftIdx = this.getPixelIndex(x - 10, y);
-            this.bitmap.data[idx + 0] = this.bitmap.data[leftIdx + 0];
-            this.bitmap.data[idx + 1] = this.bitmap.data[leftIdx + 1];
-            this.bitmap.data[idx + 2] = this.bitmap.data[leftIdx + 2];
-        } else if (isWatermarkColor && x <= this.bitmap.width - 11) {
-            // Replace with color 10 pixels to the right
-            const rightIdx = this.getPixelIndex(x + 10, y);
-            this.bitmap.data[idx + 0] = this.bitmap.data[rightIdx + 0];
-            this.bitmap.data[idx + 1] = this.bitmap.data[rightIdx + 1];
-            this.bitmap.data[idx + 2] = this.bitmap.data[rightIdx + 2];
-        }
-    });
-
-    await img.write(output_image);
-    console.log(`✔ All watermark pixels (${WATERMARK_COLOR}) replaced with adjacent colors`);
-  } catch (err) {
-    console.error('❌ Error:', err);
-  }
-}
-
-async function addWatermark(baseImagePath, watermarkPath, outputPath, opacity = 0.35) {
-    try {
-        const base = await Jimp.read(baseImagePath);
-        const watermark = await Jimp.read(watermarkPath);
-
-        // Set opacity
-        watermark.opacity(opacity);
-
-        // Resize watermark to fit the base image
-        const watermarkWidth = (90 * base.bitmap.width)/100; // 25% of the base image width
-        const watermarkHeight = base.bitmap.height; // maintain aspect ratio
-        watermark.resize({w: watermarkWidth, h: watermarkHeight}); // pass an object
-
-        // Position: bottom-right with 10px margin
-        const x = base.bitmap.width - watermark.bitmap.width - 10;
-        const y = base.bitmap.height - watermark.bitmap.height - 10;
-
-        base.composite(watermark, x, y, {
-            mode: Jimp.BLEND_SOURCE_OVER,
-            opacitySource: opacity
-        });
-
-        await base.write(outputPath);
-        console.log('✔ Watermark added!');
-    } catch (err) {
-        if (err && err.code !== 'ENOENT') throw err;
-        console.error('❌ Error adding watermark:', err);
-    }
-}
-
 // format= {their channel id: my channel webhook}
-const channelMatchDict = {
-    [process.env.CHANNEL_1]: process.env.WEBHOOK_1,
-    [process.env.CHANNEL_2]: process.env.WEBHOOK_2, 
-    [process.env.CHANNEL_3]: process.env.WEBHOOK_3,
-    [process.env.CHANNEL_4]: process.env.WEBHOOK_4,
-    [process.env.CHANNEL_5]: process.env.WEBHOOK_5,
-    [process.env.CHANNEL_6]: process.env.WEBHOOK_6,
-    [process.env.CHANNEL_7]: process.env.WEBHOOK_7,
-    [process.env.CHANNEL_8]: process.env.WEBHOOK_8,
-    [process.env.CHANNEL_9]: process.env.WEBHOOK_9,
-    [process.env.CHANNEL_10]: process.env.WEBHOOK_10,
-    [process.env.CHANNEL_11]: process.env.WEBHOOK_11,
-    [process.env.CHANNEL_12]: process.env.WEBHOOK_12,
-    [process.env.CHANNEL_13]: process.env.WEBHOOK_13,
-    [process.env.CHANNEL_14]: process.env.WEBHOOK_14,
-    [process.env.CHANNEL_15]: process.env.WEBHOOK_15,
-    [process.env.CHANNEL_16]: process.env.WEBHOOK_16,
-    [process.env.CHANNEL_17]: process.env.WEBHOOK_17,
-    [process.env.CHANNEL_18]: process.env.WEBHOOK_18,
-    [process.env.CHANNEL_19]: process.env.WEBHOOK_19,
-    [process.env.CHANNEL_20]: process.env.WEBHOOK_20,
+const channelMatchDict = {};
+
+// Dynamically load all CHANNEL_X and WEBHOOK_X pairs from .env
+// This supports unlimited channels - just add CHANNEL_X and WEBHOOK_X to .env
+let channelCount = 0;
+for (let i = 1; i <= 100; i++) {
+    const channelKey = `CHANNEL_${i}`;
+    const webhookKey = `WEBHOOK_${i}`;
+    
+    const channelId = process.env[channelKey];
+    const webhookUrl = process.env[webhookKey];
+    
+    // Stop if both are missing (no more channels configured)
+    if (!channelId && !webhookUrl) {
+        if (i > 1 && channelCount === 0) {
+            continue; // Skip gaps in numbering
+        } else if (channelCount > 0) {
+            break; // Stop if we've found channels and now hit a gap
+        }
+    }
+    
+    // Validate and add the mapping
+    if (channelId && webhookUrl && webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
+        channelMatchDict[channelId] = webhookUrl;
+        channelCount++;
+        console.log(`✅ Loaded channel ${i}: ${channelId.substring(0, 8)}...`);
+    } else if (channelId || webhookUrl) {
+        console.warn(`⚠️ Skipping channel ${i}: Invalid or incomplete configuration`);
+    }
 }
 
-const testWebhook = new WebhookClient({ url: process.env.TEST_WEBHOOK });
+console.log(`\n📊 Total active channel mappings: ${channelCount}`);
+
+// Only create test webhook if URL is valid and not a placeholder
+let testWebhook = null;
+if (process.env.TEST_WEBHOOK && 
+    process.env.TEST_WEBHOOK.startsWith('https://discord.com/api/webhooks/') &&
+    !process.env.TEST_WEBHOOK.includes('your_test_webhook_url')) {
+    try {
+        testWebhook = new WebhookClient({ url: process.env.TEST_WEBHOOK });
+        console.log('Test webhook initialized');
+    } catch (error) {
+        console.log('Test webhook failed to initialize:', error.message);
+    }
+} else {
+    console.log('Test webhook not configured or invalid');
+}
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
-    ]
+    checkUpdate: false
 });
 
 client.once('ready', async () => { 
@@ -161,42 +108,173 @@ client.on('messageCreate', async message => {
     // ignore own messages
     // check if channel id is in channelMatchDict
 
-    if (channelMatchDict[message.channel.id]) {
+    // Only log debug info for monitored channels
+    if (message && message.channel && channelMatchDict[message.channel.id]) {
+        // Debug: Log all message properties to understand structure
+        console.log('\n=== MESSAGE RECEIVED ===');
+        console.log('Channel ID:', message.channel.id);
+        console.log('Message ID:', message.id);
+        console.log('Author:', message.author ? message.author.tag : 'Unknown');
+        console.log('Content:', message.content || 'No text content');
+        console.log('Has embeds:', message.embeds?.length > 0);
+        console.log('Has attachments:', message.attachments?.size > 0);
+        
+        // Check for components and extract slip reference data
+        if (message.components && message.components.length > 0) {
+            console.log('\n🎯 === SLIP REFERENCE EXTRACTION ===');
+            console.log('Since you control the /hideplay command, extracting slip identifiers...');
+            
+            // Create slip reference object for your mapping system
+            let slipReference = {
+                messageId: message.id,
+                channelId: message.channel.id,
+                authorId: message.author.id,
+                timestamp: message.createdTimestamp,
+                interactionId: message.interaction?.id,
+                commandName: message.interaction?.name,
+                triggerUser: message.interaction?.user?.username,
+                cdnParameters: {},
+                slipIdentifiers: [],
+                buttonData: {}
+            };
+            
+            console.log('\n📸 SLIP IMAGE ANALYSIS:');
+            message.embeds.forEach((embed, embedIndex) => {
+                if (embed.image?.url) {
+                    const imageUrl = embed.image.url;
+                    console.log(`Image ${embedIndex + 1} URL: ${imageUrl}`);
+                    
+                    try {
+                        const url = new URL(imageUrl);
+                        const params = Object.fromEntries(url.searchParams);
+                        slipReference.cdnParameters = params;
+                        
+                        console.log(`🔑 CDN PARAMETERS (Slip Identifiers):`);
+                        console.log(`  ex: ${params.ex}`);
+                        console.log(`  is: ${params.is}`);
+                        console.log(`  hm: ${params.hm?.substring(0, 16)}...`);
+                        
+                        // Extract Discord attachment ID
+                        const pathParts = url.pathname.split('/');
+                        const attachmentId = pathParts.find(part => /^\d{17,19}$/.test(part));
+                        if (attachmentId) {
+                            slipReference.attachmentId = attachmentId;
+                            console.log(`  attachment_id: ${attachmentId}`);
+                        }
+                        
+                        // Add primary identifiers
+                        slipReference.slipIdentifiers.push({
+                            type: 'cdn_ex',
+                            value: params.ex,
+                            note: 'Likely expiration parameter'
+                        });
+                        slipReference.slipIdentifiers.push({
+                            type: 'cdn_is',
+                            value: params.is,
+                            note: 'Likely image signature'
+                        });
+                        
+                    } catch (e) {
+                        console.log(`URL parse error: ${e.message}`);
+                    }
+                }
+            });
+            
+            console.log('\n🎮 BUTTON ANALYSIS:');
+            message.components.forEach((actionRow, rowIndex) => {
+                if (actionRow.components) {
+                    actionRow.components.forEach((component, compIndex) => {
+                        const customId = component.custom_id || component.customId || component.id;
+                        console.log(`\nButton ${compIndex + 1}: ${component.label}`);
+                        console.log(`  Custom ID: ${customId}`);
+                        console.log(`  Style: ${component.style}`);
+                        
+                        // Store button data
+                        slipReference.buttonData[customId] = {
+                            label: component.label,
+                            style: component.style,
+                            type: component.type
+                        };
+                        
+                        if (customId === 'view_slip') {
+                            console.log(`\n🎯 VIEW_SLIP BUTTON FOUND:`);
+                            console.log(`This button would reveal your unblurred slip.`);
+                            console.log(`Since you generate these with /hideplay, you can map:`);
+                            console.log(`  Message ID → Unblurred Slip: ${message.id}`);
+                            console.log(`  CDN 'ex' param → Slip ID: ${slipReference.cdnParameters.ex}`);
+                            console.log(`  CDN 'is' param → Image Sig: ${slipReference.cdnParameters.is}`);
+                        }
+                    });
+                }
+            });
+            
+            // Extract interaction data from your /hideplay command
+            if (message.interaction) {
+                console.log(`\n🎮 YOUR /HIDEPLAY COMMAND DATA:`);
+                console.log(`  Command: /${message.interaction.name}`);
+                console.log(`  Triggered by: ${message.interaction.user.username}`);
+                console.log(`  Interaction ID: ${message.interaction.id}`);
+                console.log(`  Timestamp: ${new Date(parseInt(message.interaction.id) >> 22 + 1420070400000)}`);
+            }
+            
+            // Look for additional slip IDs in embed content
+            console.log('\n🔍 EMBED CONTENT ANALYSIS:');
+            message.embeds.forEach((embed, embedIndex) => {
+                if (embed.footer?.text) {
+                    const footerIds = embed.footer.text.match(/[a-zA-Z0-9]{6,}/g);
+                    if (footerIds) {
+                        footerIds.forEach(id => {
+                            slipReference.slipIdentifiers.push({
+                                type: 'footer_id',
+                                value: id,
+                                note: 'Found in embed footer'
+                            });
+                        });
+                        console.log(`Footer IDs: ${footerIds.join(', ')}`);
+                    }
+                }
+                
+                if (embed.description) {
+                    // Look for hidden slip data in spoiler tags or code blocks
+                    const spoilerMatches = embed.description.match(/\|\|([^|]+)\|\|/g);
+                    if (spoilerMatches) {
+                        console.log(`Spoiler content: ${spoilerMatches.join(', ')}`);
+                        spoilerMatches.forEach(spoiler => {
+                            const content = spoiler.replace(/\|\|/g, '');
+                            if (content.length >= 6) {
+                                slipReference.slipIdentifiers.push({
+                                    type: 'spoiler_id',
+                                    value: content,
+                                    note: 'Found in spoiler tags'
+                                });
+                            }
+                        });
+                    }
+                }
+            });
+            
+            // Final slip reference object
+            console.log(`\n📦 COMPLETE SLIP REFERENCE FOR YOUR SYSTEM:`);
+            console.log(JSON.stringify(slipReference, null, 2));
+            
+            console.log(`\n💡 RECOMMENDED MAPPING STRATEGY:`);
+            console.log(`1. Primary Key: Message ID (${message.id})`);
+            console.log(`2. Secondary Key: CDN 'ex' param (${slipReference.cdnParameters.ex})`);
+            console.log(`3. Tertiary Key: CDN 'is' param (${slipReference.cdnParameters.is})`);
+            console.log(`4. Interaction ID: ${slipReference.interactionId}`);
+            console.log(`\nWhen someone clicks 'View Slip', you can use these IDs to serve the unblurred version.`);
+            
+            console.log('🎯 === END SLIP REFERENCE EXTRACTION ===\n');
+        }
+        console.log('=== END MESSAGE DEBUG ===\n');
+    }
+
+    if (message && message.channel && channelMatchDict[message.channel.id]) {
         const webhook = new WebhookClient({ url: channelMatchDict[message.channel.id] });
         if (message.embeds.length > 0) {
             const embed = message.embeds[0];
-            let containsImage = false;
-            let containsThumbnail = false;
 
-            // check if embed has image
-            if (embed.image) {
-                try {
-                    await removeWatermark(embed.image.url);
-                    if (await fileExists('image_white.jpg')) {
-                        await addWatermark('image_white.jpg', 'watermark.png', 'image_final.jpg', 0.35);
-                        containsImage = true;
-                    } else {
-                        console.warn('image_white.jpg not created, skipping watermark.');
-                    }
-                } catch (err) {
-                    console.warn('Failed to process embed image:', err);
-                }
-            }
-            // check if embed has thumbnail
-            if (embed.thumbnail) {
-                try {
-                    await removeWatermark(embed.thumbnail.url, 'thumbnail_white.jpg');
-                    if (await fileExists('thumbnail_white.jpg')) {
-                        await addWatermark('thumbnail_white.jpg', 'watermark.png', 'thumbnail_final.jpg', 0.35);
-                        containsThumbnail = true;
-                    } else {
-                        console.warn('thumbnail_white.jpg not created, skipping watermark.');
-                    }
-                } catch (err) {
-                    console.warn('Failed to process embed thumbnail:', err);
-                }
-            }
-            // make new embed with the images
+            // make new embed
             const newEmbed = {
                 title: embed.title || '',
                 description: embed.description || 'No description',
@@ -208,98 +286,63 @@ client.on('messageCreate', async message => {
                         text: embed.footer.text,
                         icon_url: embed.footer.icon_url
                     }
-                    : undefined
+                    : undefined,
+                image: embed.image ? { url: embed.image.url } : undefined,
+                thumbnail: embed.thumbnail ? { url: embed.thumbnail.url } : undefined
             };
-            // send to webhook
-            await webhook.send({
-                username: BOT_USERNAME,
-                embeds: [newEmbed],
-                files: [
-                    ...(containsImage ? ['image_final.jpg'] : []),
-                    ...(containsThumbnail ? ['thumbnail_final.jpg'] : [])
-                ]
-            });
-            // delete the output files
-            if (containsImage) {
-                if (await fileExists('image_white.jpg')) {
-                    fs.unlink('image_white.jpg', (err) => {
-                        if (err && err.code !== 'ENOENT') throw err;
-                        console.log('image_white.jpg was deleted');
-                    });
-                }
-                if (await fileExists('image_final.jpg')) {
-                    fs.unlink('image_final.jpg', (err) => {
-                        if (err && err.code !== 'ENOENT') throw err;
-                        console.log('image_final.jpg was deleted');
-                    });
-                }
+
+            // Collect any image URLs to send as attachments
+            const imageUrls = [];
+            if (embed.image && embed.image.url) {
+                imageUrls.push(embed.image.url);
             }
-            if (containsThumbnail) {
-                if (await fileExists('thumbnail_white.jpg')) {
-                    fs.unlink('thumbnail_white.jpg', (err) => {
-                        if (err && err.code !== 'ENOENT') throw err;
-                        console.log('thumbnail_white.jpg was deleted');
+            if (embed.thumbnail && embed.thumbnail.url) {
+                imageUrls.push(embed.thumbnail.url);
+            }
+
+            // send to webhook
+            if (imageUrls.length > 0) {
+                // Send embed and images separately to ensure images are visible
+                await webhook.send({
+                    username: BOT_USERNAME,
+                    embeds: [newEmbed]
+                });
+                
+                // Send images as separate attachments
+                for (const imageUrl of imageUrls) {
+                    await webhook.send({
+                        username: BOT_USERNAME,
+                        files: [imageUrl]
                     });
                 }
-                if (await fileExists('thumbnail_final.jpg')) {
-                    fs.unlink('thumbnail_final.jpg', (err) => {
-                        if (err && err.code !== 'ENOENT') throw err;
-                        console.log('thumbnail_final.jpg was deleted');
-                    });
-                }
+            } else {
+                // No images, just send the embed
+                await webhook.send({
+                    username: BOT_USERNAME,
+                    embeds: [newEmbed]
+                });
             }
         }
         // send attachments
         if (message.attachments.size > 0) {
             console.log("attachment(s) found");
             for (const attachment of message.attachments.values()) {
-                // Check if the attachment is a video
-                if (attachment.contentType && attachment.contentType.startsWith('video/')) {
-                    console.log(`Video detected: ${attachment.url}, skipping processing.`);
-                } else {
-                    try {
-                        await removeWatermark(attachment.url);
-                        if (await fileExists('image_white.jpg')) {
-                            await addWatermark('image_white.jpg', 'watermark.png', 'output_final.jpg', 0.35);
-                            await webhook.send({
-                                username: BOT_USERNAME,
-                                files: ['output_final.jpg']
-                            });
-                            if (await fileExists('image_white.jpg')) {
-                                fs.unlink('image_white.jpg', (err) => {
-                                    if (err && err.code !== 'ENOENT') throw err;
-                                    console.log('image_white.jpg was deleted');
-                                });
-                            }
-                            if (await fileExists('output_final.jpg')) {
-                                fs.unlink('output_final.jpg', (err) => {
-                                    if (err && err.code !== 'ENOENT') throw err;
-                                    console.log('output_final.jpg was deleted');
-                                });
-                            }
-                        } else {
-                            console.warn('image_white.jpg not created for attachment, skipping watermark/send.');
-                        }
-                    } catch (err) {
-                        console.warn('Failed to process attachment:', err);
-                    }
-                }
+                await webhook.send({
+                    username: BOT_USERNAME,
+                    files: [attachment.url]
+                });
             }
         }
         if (message.content && message.content.length > 0) {
-            // check if message has "<@" and ">" (its a role ping)
-            console.log(message.content)
-            if (message.content && message.content.length > 0) {
-            // check if message has "<@" and ">" (its a role ping)
-            console.log(message.content)
+            // forward message content, but strip @everyone mentions
+            console.log(message.content);
             if (message.content.includes("@everyone")) {
-                    const newContent = message.content.replace(/@everyone/g, "");
-                    await webhook.send({
-                        username: BOT_USERNAME,
-                        content: newContent,
-                    });
+                const newContent = message.content.replace(/@everyone/g, "");
+                await webhook.send({
+                    username: BOT_USERNAME,
+                    content: newContent,
+                });
             } else {
-                // send message to webhook
                 await webhook.send({
                     username: BOT_USERNAME,
                     content: message.content,
@@ -307,7 +350,7 @@ client.on('messageCreate', async message => {
             }
         }
     }
-}});
+});
 // check for edits too
 client.on('messageUpdate', async (oldMessage, newMessage) => {
         
@@ -315,34 +358,114 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
     if (newMessage.author.id === client.user.id) {
         return;
     }
+
+    // Only debug updates for monitored channels
+    if (channelMatchDict[newMessage.channel.id]) {
+        console.log('\n=== MESSAGE UPDATED ===');
+        console.log('Channel ID:', newMessage.channel.id);
+        console.log('Message ID:', newMessage.id);
+        
+        // Check for components in updated message with slip ID extraction
+        if (newMessage.components && newMessage.components.length > 0) {
+            console.log('\n🎯 === SLIP ID EXTRACTION MODE ===');
+            
+            // Extract key identifiers for your slip mapping system
+            console.log('📊 SLIP IDENTIFICATION DATA:');
+            
+            let slipIdentifiers = {
+                messageId: newMessage.id,
+                channelId: newMessage.channel.id,
+                timestamp: new Date().toISOString(),
+                cdnParams: {},
+                interactionData: {},
+                attachmentId: null
+            };
+            
+            // Extract CDN parameters that likely contain slip IDs
+            newMessage.embeds.forEach((embed, embedIndex) => {
+                if (embed.image?.url) {
+                    console.log(`\n� SLIP ID EXTRACTION FROM IMAGE ${embedIndex + 1}:`);
+                    const imageUrl = embed.image.url;
+                    
+                    try {
+                        const url = new URL(imageUrl);
+                        
+                        // Extract the key parameters that change per slip
+                        const cdnParams = Object.fromEntries(url.searchParams);
+                        slipIdentifiers.cdnParams = cdnParams;
+                        
+                        // Extract attachment ID from path
+                        const pathParts = url.pathname.split('/');
+                        const attachmentId = pathParts[pathParts.length - 2]; // The ID before filename
+                        slipIdentifiers.attachmentId = attachmentId;
+                        
+                        console.log(`🎯 PRIMARY SLIP IDENTIFIERS:`);
+                        console.log(`  ex parameter: ${cdnParams.ex}`);
+                        console.log(`  is parameter: ${cdnParams.is}`);
+                        console.log(`  hm parameter: ${cdnParams.hm?.substring(0, 16)}...`);
+                        console.log(`  attachment_id: ${attachmentId}`);
+                        console.log(`  message_id: ${newMessage.id}`);
+                        
+                        // These are likely your slip identifiers
+                        console.log(`\n� RECOMMENDED SLIP MAPPING:`);
+                        console.log(`  Slip ID 1: ${cdnParams.ex}`);
+                        console.log(`  Slip ID 2: ${cdnParams.is}`);
+                        console.log(`  Full Hash: ${cdnParams.hm}`);
+                        
+                    } catch (e) {
+                        console.log(`Failed to parse URL: ${e.message}`);
+                    }
+                }
+            });
+            
+            // Extract interaction data if available
+            if (newMessage.interaction) {
+                slipIdentifiers.interactionData = {
+                    id: newMessage.interaction.id,
+                    name: newMessage.interaction.name,
+                    user: newMessage.interaction.user.username
+                };
+                
+                console.log(`\n� INTERACTION INFO:`);
+                console.log(`  Command: /${newMessage.interaction.name}`);
+                console.log(`  Triggered by: ${newMessage.interaction.user.username}`);
+                console.log(`  Interaction ID: ${newMessage.interaction.id}`);
+            }
+            
+            // Log final slip identifier object for your reference
+            console.log(`\n📦 COMPLETE SLIP IDENTIFIER PACKAGE:`);
+            console.log(JSON.stringify(slipIdentifiers, null, 2));
+            
+            // Check if this is a view_slip button for reference
+            newMessage.components.forEach((actionRow) => {
+                if (actionRow.components) {
+                    actionRow.components.forEach((component) => {
+                        const customId = component.custom_id || component.customId || component.id;
+                        
+                        if (customId === 'view_slip') {
+                            console.log(`\n� VIEW_SLIP BUTTON DETECTED:`);
+                            console.log(`This button would normally reveal the unblurred slip.`);
+                            console.log(`Since you're generating these slips, you can use the identifiers above`);
+                            console.log(`to correlate this preview with your original unblurred data.`);
+                        }
+                    });
+                }
+            });
+            
+            console.log('🎯 === END SLIP ID EXTRACTION ===\n');
+        } else {
+            console.log('No components in updated message');
+        }
+        console.log('=== END UPDATE DEBUG ===\n');
+    }
+
     // check if channel id is in channelMatchDict
     if (channelMatchDict[newMessage.channel.id]) {
         const webhook = new WebhookClient({ url: channelMatchDict[newMessage.channel.id] });
         if (newMessage.embeds.length > 0) {
             const embed = newMessage.embeds[0];
-            // send to webhook
-            let containsImage = false;
-            let containsThumbnail = false;
 
-            // check if embed has image
-            if (embed.image) {
-                containsImage = true;
-                console.log("embed image found");
-                // run through removeWatermark
-                await removeWatermark(embed.image.url);
-                // run through addWatermark
-                await addWatermark('image_white.jpg', 'watermark.png', 'image_final.jpg', 0.35);
-            }
-            // check if embed has thumbnail
-            if (embed.thumbnail) {
-                containsThumbnail = true;
-                console.log("embed thumbnail found");
-                // run through removeWatermark
-                await removeWatermark(embed.thumbnail.url, 'thumbnail_white.jpg');
-                // run through addWatermark
-                await addWatermark('thumbnail_white.jpg', 'watermark.png', 'thumbnail_final.jpg', 0.35);
-            }
-            // make new embed with the images
+            // make new embed
             const newEmbed = {
                 title: embed.title || '',
                 description: embed.description || 'No description',
@@ -354,65 +477,50 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
                         text: embed.footer.text,
                         icon_url: embed.footer.icon_url
                     }
-                    : undefined
+                    : undefined,
+                image: embed.image ? { url: embed.image.url } : undefined,
+                thumbnail: embed.thumbnail ? { url: embed.thumbnail.url } : undefined
             };
-            // send to webhook
-            await webhook.send({
-                username: BOT_USERNAME,
-                embeds: [newEmbed],
-                files: [
-                    ...(containsImage ? ['image_final.jpg'] : []),
-                    ...(containsThumbnail ? ['thumbnail_final.jpg'] : [])
-                ]
-            });
-            // delete the output files
-            if (containsImage) {
-                // delete the output files
-                fs.unlink('image_white.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('image_white.jpg was deleted');
-                });
-                fs.unlink('image_final.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('image_final.jpg was deleted');
-                });
-            }
-            if (containsThumbnail) {
-                await fs.unlink('thumbnail_white.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('thumbnail_white.jpg was deleted');
-                });
-                await fs.unlink('thumbnail_final.jpg', (err) => {
-                    if (err && err.code !== 'ENOENT') throw err;
-                    console.log('thumbnail_final.jpg was deleted');
-                });
 
+            // Collect any image URLs to send as attachments
+            const imageUrls = [];
+            if (embed.image && embed.image.url) {
+                imageUrls.push(embed.image.url);
+            }
+            if (embed.thumbnail && embed.thumbnail.url) {
+                imageUrls.push(embed.thumbnail.url);
+            }
+
+            // send to webhook
+            if (imageUrls.length > 0) {
+                // Send embed and images separately to ensure images are visible
+                await webhook.send({
+                    username: BOT_USERNAME,
+                    embeds: [newEmbed]
+                });
+                
+                // Send images as separate attachments
+                for (const imageUrl of imageUrls) {
+                    await webhook.send({
+                        username: BOT_USERNAME,
+                        files: [imageUrl]
+                    });
+                }
+            } else {
+                // No images, just send the embed
+                await webhook.send({
+                    username: BOT_USERNAME,
+                    embeds: [newEmbed]
+                });
             }
         }
         if (newMessage.attachments.size > 0) {
-            const attachment = newMessage.attachments.first();
-            // pls help github copilot 
-            // run through removeWatermark
-            await removeWatermark(attachment.url);
-            // run through addWatermark
-            await addWatermark('image_white.jpg', 'watermark.png', 'output_final.jpg', 0.35);
-            
-            // send to webhook
-            await webhook.send({
-                username: BOT_USERNAME,
-                files: ['output_final.jpg']
-            });
-            // delete the output files
-            // delete the output files
-            fs.unlink('image_white.jpg', (err) => {
-                if (err && err.code !== 'ENOENT') throw err;
-                console.log('image_white.jpg was deleted');
-            });
-            fs.unlink('output_final.jpg', (err) => {
-                if (err && err.code !== 'ENOENT') throw err;
-                console.log('output_final.jpg was deleted');
-            });
-
+            for (const attachment of newMessage.attachments.values()) {
+                await webhook.send({
+                    username: BOT_USERNAME,
+                    files: [attachment.url]
+                });
+            }
         }
 
         if (newMessage.content && newMessage.content.length > 0) {
