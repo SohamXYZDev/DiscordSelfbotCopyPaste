@@ -13,6 +13,9 @@ const WEBHOOKS_FILE = path.join(__dirname, 'webhooks.json');
 // Storage for channel mappings: { sourceChannelId: { webhookUrl, targetChannelId, targetChannelName } }
 let channelWebhookMap = {};
 
+// Lock to prevent concurrent webhook creation for the same channel
+const creationLocks = new Map();
+
 // Load existing webhook mappings from file
 function loadWebhookMappings() {
     try {
@@ -132,10 +135,18 @@ async function getOrCreateWebhook(sourceChannel, client) {
         return channelWebhookMap[sourceChannelId].webhookUrl;
     }
     
+    // Check if creation is already in progress for this channel
+    if (creationLocks.has(sourceChannelId)) {
+        console.log(`⏳ Waiting for existing creation process for ${sourceChannelName}...`);
+        return await creationLocks.get(sourceChannelId);
+    }
+    
     console.log(`🆕 No webhook found, creating new channel and webhook...`);
     
-    try {
-        // Get target guild
+    // Create a promise for this creation process and store it in the lock
+    const creationPromise = (async () => {
+        try {
+            // Get target guild
         const targetGuild = await client.guilds.fetch(TARGET_GUILD_ID);
         if (!targetGuild) {
             console.error(`❌ Could not fetch target guild: ${TARGET_GUILD_ID}`);
@@ -203,15 +214,25 @@ async function getOrCreateWebhook(sourceChannel, client) {
         
         saveWebhookMappings();
         
-        return webhook.url;
+            return webhook.url;
         
-    } catch (error) {
-        console.error(`❌ Error creating webhook for ${sourceChannelName}:`, error.message);
-        if (error.code) {
-            console.error(`   Error code: ${error.code}`);
+        } catch (error) {
+            console.error(`❌ Error creating webhook for ${sourceChannelName}:`, error.message);
+            if (error.code) {
+                console.error(`   Error code: ${error.code}`);
+            }
+            return null;
+        } finally {
+            // Remove the lock after completion (success or failure)
+            creationLocks.delete(sourceChannelId);
         }
-        return null;
-    }
+    })();
+    
+    // Store the promise in the lock map
+    creationLocks.set(sourceChannelId, creationPromise);
+    
+    // Wait for and return the result
+    return await creationPromise;
 }
 
 const client = new Client({
