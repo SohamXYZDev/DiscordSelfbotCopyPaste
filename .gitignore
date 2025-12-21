@@ -1,6 +1,9 @@
 # Environment variables
 .env
 
+# Webhook storage (contains sensitive webhook URLs)
+webhooks.json
+
 # Node modules
 node_modules/
 

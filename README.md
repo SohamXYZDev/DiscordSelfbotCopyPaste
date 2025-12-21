@@ -1,267 +1,293 @@
-# Discord Message Mirror Bot with Component Interaction
+# Discord Selfbot with Dynamic Channel Mirroring
 
-A Discord selfbot that monitors specified channels and mirrors messages to your own server via webhooks, with automatic Discord component (button) detection and interaction capabilities.
+A Discord selfbot that automatically mirrors messages from source channels to dynamically created mirror channels with automatic webhook management.
 
 ## ⚠️ IMPORTANT DISCLAIMER
 
-**This project uses a Discord selfbot, which violates Discord's Terms of Service. Use at your own risk. Your account may be banned if detected by Discord.**
-**Therefore,**
-**This code is served "as-is" and for experimentation and learning purposes only.**
+**This project uses a Discord selfbot, which violates Discord's Terms of Service. Use at your own risk. Your account may be banned if detected by Discord.**  
+**This code is provided "as-is" for experimentation and learning purposes only.**
 
-## Features
+## ✨ Features
 
-- 🔄 **Message Mirroring**: Automatically forwards messages from monitored channels to your server
-- 🖼️ **Image Forwarding**: Forwards images from embeds and attachments
-- � **Component Interaction**: Automatically detects and clicks Discord buttons (especially "View Slip" buttons)
-- 📎 **Attachment Support**: Forwards image attachments and embeds
-- ✏️ **Edit Tracking**: Monitors message edits and updates mirrored messages
-- 🎭 **Custom Branding**: Uses configurable bot username for forwarded messages
-- � **Debug Logging**: Detailed component detection and interaction logging
+- **🤖 Automatic Channel Creation**: Automatically creates mirror channels in your target server with matching names
+- **🔗 Dynamic Webhook Management**: Creates and stores webhooks automatically - no manual setup required!
+- **📁 Category Structure Options**:
+  - Create all mirror channels in a specified category
+  - OR copy the source channel's category structure automatically
+- **♾️ Unlimited Channels**: Monitor as many source channels as you want
+- **💾 Persistent Storage**: Webhooks are saved to `webhooks.json` for reuse across restarts
+- **🎯 Slip ID Extraction**: Detects and extracts slip identifiers from Discord messages with components
+- **📊 Comprehensive Logging**: Detailed console output for debugging and monitoring
+- **✏️ Edit Tracking**: Monitors message edits and updates mirrored messages
 
-## How It Works
+## 🚀 Quick Start
 
-### Component Detection
+### 1. Install Dependencies
 
-1. **Button Scanning**: Monitors all messages for Discord components (buttons, select menus, etc.)
-2. **Auto-Interaction**: Automatically clicks buttons with specific custom IDs (like "view_slip")
-3. **Detailed Logging**: Shows component properties, types, styles, and interaction results
+```bash
+npm install
+```
 
-### Message Forwarding
+### 2. Configure Environment
 
-- Preserves embed structure (title, description, color, footer, etc.)
-- Forwards images both within embeds and as separate attachments
-- Handles @everyone mentions by removing them
-- Supports up to 20 channel-to-webhook mappings
-
-## Installation
-
-1. **Clone the repository**
-
-   ```bash
-   git clone <repository-url>
-   cd DiscordSelfbotCopyPaste
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-
-   - Copy `.env.example` to `.env` (if available) or create a new `.env` file
-   - Configure all required variables (see Configuration section)
-
-## Configuration
-
-### Required Environment Variables
+Copy `.env.example` to `.env` and configure the **required** settings:
 
 ```env
-# Discord Bot Token (Your account token)
+# REQUIRED: Your Discord selfbot token
 TOKEN=your_discord_token_here
 
-# Bot Display Name (Optional, defaults to "Bot")
-BOT_USERNAME=Your Bot or Webhook Name
+# REQUIRED: Server ID where mirror channels will be created
+TARGET_GUILD_ID=your_target_guild_id_here
 
-# Test Webhook (Optional - only needed for testing)
-TEST_WEBHOOK=https://discord.com/api/webhooks/your_test_webhook_here
-
-# Channel IDs to monitor (you only need the ones you want to use)
-CHANNEL_1=channel_id_to_monitor
-CHANNEL_2=another_channel_id
-# ... up to CHANNEL_20 (only define what you need)
-
-# Corresponding webhook URLs for your server
-WEBHOOK_1=https://discord.com/api/webhooks/your_webhook_url
-WEBHOOK_2=https://discord.com/api/webhooks/another_webhook_url
-# ... up to WEBHOOK_20 (only define what you need)
-CHANNEL_2=another_channel_id
-CHANNEL_2=another_channel_id
-# ... up to CHANNEL_20 (only define what you need)
-
-# Corresponding webhook URLs for your server
-WEBHOOK_1=https://discord.com/api/webhooks/your_webhook_url
-WEBHOOK_2=https://discord.com/api/webhooks/another_webhook_url
-# ... up to WEBHOOK_20 (only define what you need)
+# REQUIRED: Source channels to monitor
+CHANNEL_1=source_channel_id_1
+CHANNEL_2=source_channel_id_2
+# Add as many as you need...
 ```
 
-### Channel-Webhook Mapping
+**How to get IDs:**
 
-The bot maps source channels to destination webhooks:
+- Enable Developer Mode in Discord (Settings → Advanced → Developer Mode)
+- Right-click server/channel → Copy ID
 
-- `CHANNEL_1` → `WEBHOOK_1`
-- `CHANNEL_2` → `WEBHOOK_2`
-- And so on...
+**Optional settings:**
 
-### Component Interaction Configuration
+```env
+# Put all mirror channels in one category
+TARGET_CATEGORY_ID=category_id_here
 
-The bot automatically detects and interacts with Discord components:
+# OR copy source category structure (true/false)
+COPY_CATEGORY_STRUCTURE=false
 
-- **Auto-Click**: Automatically clicks buttons with `custom_id: "view_slip"`
-- **Logging**: Shows detailed information about all detected components
-- **Fallback Methods**: Uses multiple interaction methods for better compatibility
-
-## Usage
-
-1. **Start the bot**
-
-   ```bash
-   node index.js
-   ```
-
-2. **Monitor the console**
-
-   - The bot will log when it's ready: `Logged in as YourUsername#1234`
-   - Component detection will show detailed information about Discord buttons
-   - Auto-clicking will show success/failure messages
-
-3. **Test functionality**
-   - Send a message with an embed/image in a monitored channel
-   - Check your destination channel for the mirrored message
-   - Watch for component interaction logs when buttons appear
-
-## Console Output Examples
-
-### Component Detection
-
-```
-=== MESSAGE RECEIVED ===
-Channel ID: 1415090591447908499
-Message ID: 1415728338361651432
-Author: someuser#1234
-
-=== COMPONENTS FOUND ===
-Component: View Slip (ID: view_slip)
-Component: Show All Slips (ID: show_all)
-🎯 FOUND VIEW_SLIP BUTTON - ATTEMPTING TO CLICK
-✅ Successfully clicked view_slip button
+# Customize webhook username
+BOT_USERNAME=Mirror Bot
 ```
 
-## File Structure
+### 3. Run the Bot
 
-```
-DiscordSelfbotCopyPaste/
-├── index.js           # Main bot code
-├── package.json       # Dependencies
-├── .env              # Configuration file
-├── .env.example      # Example configuration
-└── README.md         # This file
+```bash
+node index.js
 ```
 
-## Technical Details
+### 4. First Run - What to Expect
 
-### Dependencies
+On first run, when a message appears in a monitored channel:
 
-- `discord.js-selfbot-v13` - Discord selfbot functionality
-- `dotenv` - Environment variable management
-- `axios` - HTTP requests
+1. **Automatic Setup**: Bot creates a mirror channel with the same name
+2. **Webhook Creation**: Creates a webhook automatically
+3. **Storage**: Saves mapping to `webhooks.json`
+4. **Message Forward**: Forwards the message immediately
 
-### Component Interaction
+**Console output:**
 
-The bot automatically:
+```
+📨 Message received in channel-name
+🆕 No webhook found, creating new channel and webhook...
+📍 Target guild: Your Server Name
+🆕 Creating channel: channel-name
+✅ Created channel: channel-name
+🔗 Creating webhook...
+✅ Created webhook
+💾 Saved webhook mappings
+✅ Message successfully mirrored!
+```
 
-- Detects Discord components (buttons, select menus)
-- Logs detailed component information
-- Auto-clicks buttons with `custom_id: "view_slip"`
-- Uses fallback interaction methods for compatibility
+**Subsequent messages** in the same channel will use the stored webhook instantly!
 
-## Supported Content Types
+## ⚙️ Configuration Options
 
-### ✅ Supported
+### Required Settings
 
-- Text messages
-- Image attachments (PNG, JPG, GIF, etc.)
-- Embed images and thumbnails
-- Discord components (buttons, select menus)
-- Message edits and updates
-- Message edits and updates
+| Variable          | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| `TOKEN`           | Your Discord selfbot token                       |
+| `TARGET_GUILD_ID` | Server ID where mirror channels will be created  |
+| `CHANNEL_X`       | Source channel IDs to monitor (X = 1, 2, 3, ...) |
 
-### ❌ Not Supported
+### Optional Settings
 
-- Video files (forwarded but not processed)
-- Audio files
-- Other file types
+| Variable                  | Default | Description                                                     |
+| ------------------------- | ------- | --------------------------------------------------------------- |
+| `BOT_USERNAME`            | `"Bot"` | Username displayed in webhook messages                          |
+| `TARGET_CATEGORY_ID`      | `null`  | Category ID to create all mirror channels under                 |
+| `COPY_CATEGORY_STRUCTURE` | `false` | If `true`, recreates source category structure in target server |
 
-## Limitations
+## 📋 How It Works
 
-- **Discord ToS**: Using selfbots violates Discord's Terms of Service
-- **Rate Limits**: Subject to Discord's API rate limits
-- **Component Access**: Can only interact with components the user account has access to
-- **Channel Limit**: Maximum 20 monitored channels
-- **Webhook Validation**: Only creates webhooks for valid URLs
+1. **Startup**: Bot loads source channel IDs and existing webhook mappings from `webhooks.json`
+2. **Message Received**: When a message appears in a monitored source channel:
+   - Checks if mirror channel/webhook exists
+   - If not, creates mirror channel (with same name as source)
+   - Creates webhook in mirror channel
+   - Saves mapping to `webhooks.json`
+   - Forwards the message
+3. **Future Messages**: Uses stored webhook for instant forwarding
 
-## Troubleshooting
+## 📁 Files Generated
+
+- **`webhooks.json`**: Auto-generated file storing channel/webhook mappings
+  ```json
+  {
+    "source_channel_id": {
+      "webhookUrl": "https://discord.com/api/webhooks/...",
+      "targetChannelId": "mirror_channel_id",
+      "targetChannelName": "channel-name",
+      "sourceChannelName": "original-name",
+      "createdAt": "2025-12-21T..."
+    }
+  }
+  ```
+
+## 🎯 Slip ID Extraction
+
+When messages with Discord components (buttons) are detected, the bot extracts:
+
+- Message ID and timestamps
+- CDN parameters (`ex`, `is`, `hm`) from image URLs
+- Interaction metadata (command names, user info)
+- Attachment IDs
+
+This is useful for tracking betting slips or other interactive content.
+
+## 🔧 Advanced Usage
+
+### Category Structure Copying
+
+When `COPY_CATEGORY_STRUCTURE=true`:
+
+- Bot detects the source channel's category
+- Creates matching category in target server (if doesn't exist)
+- Places mirror channel in matching category
+- Maintains organized server structure automatically
+
+### Adding More Channels
+
+Simply add new `CHANNEL_X` entries to `.env`:
+
+```env
+CHANNEL_26=new_channel_id_here
+CHANNEL_27=another_channel_id
+# No webhooks needed - they're created automatically!
+```
+
+## 🛡️ Security Notes
+
+- This uses Discord selfbot functionality (against Discord ToS)
+- Token is sensitive - never share your `.env` file
+- Bot requires "Manage Channels" and "Manage Webhooks" permissions in target server
+- Webhook URLs are stored locally in `webhooks.json`
+
+## 🐛 Debugging
+
+The bot provides detailed console output:
+
+- ✅ Success messages (green check)
+- ❌ Error messages (red X)
+- 📊 Status information (chart emoji)
+- 🔍 Processing steps (magnifying glass)
+
+Check the console for real-time monitoring of:
+
+- Channel loading status
+- Webhook creation progress
+- Message forwarding confirmation
+- Error details with codes
+
+## 📝 Example Output
+
+```
+🔍 Loading source channel IDs from .env...
+✅ Loaded source channel 1: 123456789012345678
+✅ Loaded source channel 2: 234567890123456789
+...
+
+📊 Total source channels to monitor: 25
+🎯 Target guild ID: 987654321098765432
+
+📂 Loaded existing webhook mappings: 3
+
+✅ Logged in as YourBot#1234
+📡 Monitoring 25 source channels
+🔄 Ready to mirror messages!
+
+📨 Message received in general (123456789012345678)
+   Author: User#1234
+   Content: Hello world...
+   Embeds: 1, Attachments: 0
+
+🔍 Processing channel: general (123456789012345678)
+✅ Using existing webhook for general
+📤 Forwarding 1 embed(s)...
+✅ Embed(s) forwarded
+
+✅ Message successfully mirrored from general
+```
+
+## 🆘 Troubleshooting
 
 ### Common Issues
 
-1. **Bot won't start**
+| Issue                            | Solution                                                                                |
+| -------------------------------- | --------------------------------------------------------------------------------------- |
+| "TARGET_GUILD_ID not configured" | Add `TARGET_GUILD_ID=your_server_id` to `.env`                                          |
+| "Could not fetch target guild"   | 1. Verify your token's account is in the target server<br>2. Check server ID is correct |
+| "Error creating channel"         | Bot needs "Manage Channels" permission in target server                                 |
+| "Error creating webhook"         | Bot needs "Manage Webhooks" permission in target server                                 |
+| "No source channels configured"  | Add at least one `CHANNEL_X` to `.env`                                                  |
+| No messages forwarded            | 1. Verify source channel IDs are correct<br>2. Check bot can see those channels         |
+| Webhook creation fails           | Make sure target server isn't at webhook limit (15 per channel)                         |
 
-   - Check if your token is valid
-   - Ensure webhook URLs are valid Discord webhook URLs
-   - Verify environment variables are set correctly
+### Permissions Required
 
-2. **Components not detected**
+Your Discord account needs these permissions in the **target server**:
 
-   - Check console logs for component detection messages
-   - Ensure the bot has access to the channel
-   - Verify the message actually contains components
+- ✅ Manage Channels
+- ✅ Manage Webhooks
+- ✅ Send Messages
+- ✅ Embed Links
+- ✅ Attach Files
 
-3. **Button clicks failing**
+### Reset/Fresh Start
 
-   - Check if the bot has permission to interact with components
-   - Verify the component's `custom_id` matches "view_slip"
-   - Look for error messages in console logs
+If you need to start over:
 
-4. **Images not forwarding**
+1. Delete `webhooks.json`
+2. Optionally delete created mirror channels in target server
+3. Run bot again - it will recreate everything
 
-   - Check if images are being detected in console logs
-   - Verify webhook has permission to send files
-   - Ensure image URLs are accessible
+### Getting Help
 
-### Error Messages
+Check the console output for detailed error messages. Every operation is logged with:
 
-- `WEBHOOK_URL_INVALID` - Check your webhook URLs in .env file
-- `Failed to click button` - Component interaction failed, check permissions
-- `No view_slip button found` - The message doesn't contain the expected button
-- `No components detected` - The message doesn't have any interactive elements
+- ✅ Success indicators
+- ❌ Error details with descriptions
+- 🔍 Processing steps
 
-### Debug Information
+## 🔄 Migration from Old Version
 
-The bot provides detailed logging for troubleshooting:
+If you're upgrading from the manual webhook version:
 
-- **Message Reception**: Shows when messages are received and their basic info
-- **Component Detection**: Lists all components found in messages
-- **Interaction Attempts**: Shows success/failure of button clicks
-- **Channel Filtering**: Only logs information for monitored channels
+1. **Keep your CHANNEL_X entries** - don't delete those!
+2. **Remove all WEBHOOK_X entries** - they're not needed anymore
+3. **Add TARGET_GUILD_ID** - this is where mirrors will be created
+4. **Run the bot** - it will create new channels and webhooks automatically
 
-## Legal Notice
+**Your old webhooks won't be used** - the bot creates fresh ones in your target server.
 
-This project is for educational purposes only. The authors are not responsible for any consequences of using this software, including but not limited to Discord account suspension or termination.
+## 📦 What Gets Created
 
-## Contributing
+### In Your Target Server
 
-Feel free to submit issues, feature requests, or pull requests to improve the bot's functionality.
+- Mirror channels (one per source channel)
+- Webhooks (one per mirror channel)
+- Categories (if `COPY_CATEGORY_STRUCTURE=true`)
 
-Created & maintained by Soham Mitra (SohamXYZ)
+### In Your Project Folder
 
-- 🌐 Website: [https://sohamxyz.com](https://sohamxyz.com)
-- 📧 Email: soham@sohamxyz.com
-- 💬 Discord: sohamxyz
-- 🧠 discord bot/automation inquiries welcome!
+- `webhooks.json` - stores all mappings (auto-generated)
 
-## Contributing
+**Note:** `webhooks.json` is in `.gitignore` for security - webhook URLs should not be committed.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+## 📜 License
 
-## License
-
-This project is provided as-is without any warranty. Use at your own risk.
-
----
-
-**⚠️ Remember: This violates Discord's Terms of Service. Use responsibly and at your own risk.**
+Use at your own risk. Discord selfbots violate Discord's Terms of Service.

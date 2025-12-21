@@ -1,9 +1,43 @@
 const { Client, WebhookClient } = require('discord.js-selfbot-v13');
 const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
 require('dotenv').config();
 
 const BOT_USERNAME = process.env.BOT_USERNAME || "Bot";
+const TARGET_GUILD_ID = process.env.TARGET_GUILD_ID;
+const TARGET_CATEGORY_ID = process.env.TARGET_CATEGORY_ID || null;
+const COPY_CATEGORY_STRUCTURE = process.env.COPY_CATEGORY_STRUCTURE === 'true';
+const WEBHOOKS_FILE = path.join(__dirname, 'webhooks.json');
+
+// Storage for channel mappings: { sourceChannelId: { webhookUrl, targetChannelId, targetChannelName } }
+let channelWebhookMap = {};
+
+// Load existing webhook mappings from file
+function loadWebhookMappings() {
+    try {
+        if (fs.existsSync(WEBHOOKS_FILE)) {
+            const data = fs.readFileSync(WEBHOOKS_FILE, 'utf8');
+            channelWebhookMap = JSON.parse(data);
+            console.log('📂 Loaded existing webhook mappings:', Object.keys(channelWebhookMap).length);
+        } else {
+            console.log('📂 No existing webhook mappings found, starting fresh');
+        }
+    } catch (error) {
+        console.error('❌ Error loading webhook mappings:', error.message);
+        channelWebhookMap = {};
+    }
+}
+
+// Save webhook mappings to file
+function saveWebhookMappings() {
+    try {
+        fs.writeFileSync(WEBHOOKS_FILE, JSON.stringify(channelWebhookMap, null, 2));
+        console.log('💾 Saved webhook mappings to file');
+    } catch (error) {
+        console.error('❌ Error saving webhook mappings:', error.message);
+    }
+}
 
 // Helper function to extract slip identifiers for your mapping system
 function extractSlipIdentifiers(message) {
@@ -42,56 +76,146 @@ function extractSlipIdentifiers(message) {
     return identifiers;
 }
 
-// only works for simple/solid color watermarks
-// idea: find most common color in image, assume its the background color
-// then replace all pixels that are close to the watermark color with the color of the pixel 10 pixels to the left (or right if too close to left edge)
-// format= {their channel id: my channel webhook}
-const channelMatchDict = {};
-
-// Dynamically load all CHANNEL_X and WEBHOOK_X pairs from .env
-// This supports unlimited channels - just add CHANNEL_X and WEBHOOK_X to .env
+// Load source channel IDs from .env (supports unlimited channels)
+const sourceChannelIds = [];
 let channelCount = 0;
-for (let i = 1; i <= 100; i++) {
+
+console.log('🔍 Loading source channel IDs from .env...');
+for (let i = 1; i <= 200; i++) {
     const channelKey = `CHANNEL_${i}`;
-    const webhookKey = `WEBHOOK_${i}`;
-    
     const channelId = process.env[channelKey];
-    const webhookUrl = process.env[webhookKey];
     
-    // Stop if both are missing (no more channels configured)
-    if (!channelId && !webhookUrl) {
-        if (i > 1 && channelCount === 0) {
-            continue; // Skip gaps in numbering
-        } else if (channelCount > 0) {
+    if (!channelId) {
+        if (channelCount > 0) {
             break; // Stop if we've found channels and now hit a gap
         }
+        continue; // Skip gaps in numbering
     }
     
-    // Validate and add the mapping
-    if (channelId && webhookUrl && webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
-        channelMatchDict[channelId] = webhookUrl;
-        channelCount++;
-        console.log(`✅ Loaded channel ${i}: ${channelId.substring(0, 8)}...`);
-    } else if (channelId || webhookUrl) {
-        console.warn(`⚠️ Skipping channel ${i}: Invalid or incomplete configuration`);
-    }
+    sourceChannelIds.push(channelId);
+    channelCount++;
+    console.log(`✅ Loaded source channel ${i}: ${channelId}`);
 }
 
-console.log(`\n📊 Total active channel mappings: ${channelCount}`);
+if (channelCount === 0) {
+    console.error('❌ No source channels configured! Add CHANNEL_1, CHANNEL_2, etc. to .env');
+    process.exit(1);
+}
 
-// Only create test webhook if URL is valid and not a placeholder
-let testWebhook = null;
-if (process.env.TEST_WEBHOOK && 
-    process.env.TEST_WEBHOOK.startsWith('https://discord.com/api/webhooks/') &&
-    !process.env.TEST_WEBHOOK.includes('your_test_webhook_url')) {
-    try {
-        testWebhook = new WebhookClient({ url: process.env.TEST_WEBHOOK });
-        console.log('Test webhook initialized');
-    } catch (error) {
-        console.log('Test webhook failed to initialize:', error.message);
+if (!TARGET_GUILD_ID) {
+    console.error('❌ TARGET_GUILD_ID not configured! Add it to .env');
+    process.exit(1);
+}
+
+console.log(`\n📊 Total source channels to monitor: ${channelCount}`);
+console.log(`🎯 Target guild ID: ${TARGET_GUILD_ID}`);
+if (TARGET_CATEGORY_ID) {
+    console.log(`📁 Target category ID: ${TARGET_CATEGORY_ID}`);
+}
+if (COPY_CATEGORY_STRUCTURE) {
+    console.log(`📋 Category structure copying: ENABLED`);
+}
+
+// Load existing webhook mappings
+loadWebhookMappings();
+
+// Function to get or create webhook for a source channel
+async function getOrCreateWebhook(sourceChannel, client) {
+    const sourceChannelId = sourceChannel.id;
+    const sourceChannelName = sourceChannel.name;
+    
+    console.log(`\n🔍 Processing channel: ${sourceChannelName} (${sourceChannelId})`);
+    
+    // Check if we already have a webhook for this channel
+    if (channelWebhookMap[sourceChannelId] && channelWebhookMap[sourceChannelId].webhookUrl) {
+        console.log(`✅ Using existing webhook for ${sourceChannelName}`);
+        return channelWebhookMap[sourceChannelId].webhookUrl;
     }
-} else {
-    console.log('Test webhook not configured or invalid');
+    
+    console.log(`🆕 No webhook found, creating new channel and webhook...`);
+    
+    try {
+        // Get target guild
+        const targetGuild = await client.guilds.fetch(TARGET_GUILD_ID);
+        if (!targetGuild) {
+            console.error(`❌ Could not fetch target guild: ${TARGET_GUILD_ID}`);
+            return null;
+        }
+        
+        console.log(`📍 Target guild: ${targetGuild.name}`);
+        
+        // Determine category for new channel
+        let categoryId = TARGET_CATEGORY_ID;
+        
+        if (COPY_CATEGORY_STRUCTURE && sourceChannel.parent) {
+            // Try to find or create matching category
+            const sourceCategoryName = sourceChannel.parent.name;
+            console.log(`📂 Source category: ${sourceCategoryName}`);
+            
+            let targetCategory = targetGuild.channels.cache.find(
+                c => c.type === 4 && c.name === sourceCategoryName
+            );
+            
+            if (!targetCategory) {
+                console.log(`🆕 Creating category: ${sourceCategoryName}`);
+                targetCategory = await targetGuild.channels.create({
+                    name: sourceCategoryName,
+                    type: 4 // Category type
+                });
+            } else {
+                console.log(`✅ Found existing category: ${sourceCategoryName}`);
+            }
+            
+            categoryId = targetCategory.id;
+        }
+        
+        // Check if channel with same name already exists
+        let targetChannel = targetGuild.channels.cache.find(
+            c => c.name === sourceChannelName && c.type === 0 // Text channel
+        );
+        
+        if (!targetChannel) {
+            console.log(`🆕 Creating channel: ${sourceChannelName}`);
+            targetChannel = await targetGuild.channels.create({
+                name: sourceChannelName,
+                type: 0, // Text channel
+                parent: categoryId,
+                reason: `Auto-created for mirroring from ${sourceChannelName}`
+            });
+            console.log(`✅ Created channel: ${targetChannel.name} (${targetChannel.id})`);
+        } else {
+            console.log(`✅ Found existing channel: ${targetChannel.name} (${targetChannel.id})`);
+        }
+        
+        // Create webhook in target channel
+        console.log(`🔗 Creating webhook in ${targetChannel.name}...`);
+        const webhook = await targetChannel.createWebhook({
+            name: BOT_USERNAME || 'Mirror Bot',
+            reason: `Auto-created for mirroring from ${sourceChannelName}`
+        });
+        
+        console.log(`✅ Created webhook: ${webhook.url.substring(0, 50)}...`);
+        
+        // Store mapping
+        channelWebhookMap[sourceChannelId] = {
+            webhookUrl: webhook.url,
+            targetChannelId: targetChannel.id,
+            targetChannelName: targetChannel.name,
+            sourceChannelName: sourceChannelName,
+            createdAt: new Date().toISOString()
+        };
+        
+        saveWebhookMappings();
+        
+        return webhook.url;
+        
+    } catch (error) {
+        console.error(`❌ Error creating webhook for ${sourceChannelName}:`, error.message);
+        if (error.code) {
+            console.error(`   Error code: ${error.code}`);
+        }
+        return null;
+    }
 }
 
 const client = new Client({
@@ -99,30 +223,42 @@ const client = new Client({
 });
 
 client.once('ready', async () => { 
-    console.log(`Logged in as ${client.user.tag}`);
+    console.log(`\n✅ Logged in as ${client.user.tag}`);
+    console.log(`📡 Monitoring ${sourceChannelIds.length} source channels`);
+    console.log(`🔄 Ready to mirror messages!\n`);
 });
 
-
-
 client.on('messageCreate', async message => {
-    // ignore own messages
-    // check if channel id is in channelMatchDict
-
-    // Only log debug info for monitored channels
-    if (message && message.channel && channelMatchDict[message.channel.id]) {
-        // Debug: Log all message properties to understand structure
-        console.log('\n=== MESSAGE RECEIVED ===');
-        console.log('Channel ID:', message.channel.id);
-        console.log('Message ID:', message.id);
-        console.log('Author:', message.author ? message.author.tag : 'Unknown');
-        console.log('Content:', message.content || 'No text content');
-        console.log('Has embeds:', message.embeds?.length > 0);
-        console.log('Has attachments:', message.attachments?.size > 0);
+    // Ignore own messages
+    if (message.author.id === client.user.id) {
+        return;
+    }
+    
+    // Check if this is a monitored source channel
+    if (!sourceChannelIds.includes(message.channel.id)) {
+        return;
+    }
+    
+    console.log(`\n📨 Message received in ${message.channel.name} (${message.channel.id})`);
+    console.log(`   Author: ${message.author.tag}`);
+    console.log(`   Content: ${message.content ? message.content.substring(0, 50) + '...' : 'No text'}`);
+    console.log(`   Embeds: ${message.embeds.length}, Attachments: ${message.attachments.size}`);
+    
+    // Get or create webhook for this channel
+    const webhookUrl = await getOrCreateWebhook(message.channel, client);
+    
+    if (!webhookUrl) {
+        console.error(`❌ Failed to get webhook for channel ${message.channel.name}`);
+        return;
+    }
+    
+    try {
+        const webhook = new WebhookClient({ url: webhookUrl });
         
         // Check for components and extract slip reference data
         if (message.components && message.components.length > 0) {
             console.log('\n🎯 === SLIP REFERENCE EXTRACTION ===');
-            console.log('Since you control the /hideplay command, extracting slip identifiers...');
+            console.log('Detected message with components, extracting slip identifiers...');
             
             // Create slip reference object for your mapping system
             let slipReference = {
@@ -266,12 +402,10 @@ client.on('messageCreate', async message => {
             
             console.log('🎯 === END SLIP REFERENCE EXTRACTION ===\n');
         }
-        console.log('=== END MESSAGE DEBUG ===\n');
-    }
-
-    if (message && message.channel && channelMatchDict[message.channel.id]) {
-        const webhook = new WebhookClient({ url: channelMatchDict[message.channel.id] });
+        
+        // Send embeds
         if (message.embeds.length > 0) {
+            console.log(`📤 Forwarding ${message.embeds.length} embed(s)...`);
             const embed = message.embeds[0];
 
             // make new embed
@@ -322,20 +456,25 @@ client.on('messageCreate', async message => {
                     embeds: [newEmbed]
                 });
             }
+            console.log(`✅ Embed(s) forwarded`);
         }
-        // send attachments
+        
+        // Send attachments
         if (message.attachments.size > 0) {
-            console.log("attachment(s) found");
+            console.log(`📎 Forwarding ${message.attachments.size} attachment(s)...`);
             for (const attachment of message.attachments.values()) {
                 await webhook.send({
                     username: BOT_USERNAME,
                     files: [attachment.url]
                 });
             }
+            console.log(`✅ Attachment(s) forwarded`);
         }
+        
+        // Send text content
         if (message.content && message.content.length > 0) {
-            // forward message content, but strip @everyone mentions
-            console.log(message.content);
+            console.log(`💬 Forwarding text content...`);
+            // Forward message content, but strip @everyone mentions
             if (message.content.includes("@everyone")) {
                 const newContent = message.content.replace(/@everyone/g, "");
                 await webhook.send({
@@ -348,22 +487,40 @@ client.on('messageCreate', async message => {
                     content: message.content,
                 });
             }
+            console.log(`✅ Text content forwarded`);
         }
+        
+        console.log(`\n✅ Message successfully mirrored from ${message.channel.name}\n`);
+        
+    } catch (error) {
+        console.error(`❌ Error forwarding message from ${message.channel.name}:`, error.message);
     }
 });
-// check for edits too
+
+// Handle message updates
 client.on('messageUpdate', async (oldMessage, newMessage) => {
-        
-    // ignore own messages
+    // Ignore own messages
     if (newMessage.author.id === client.user.id) {
         return;
     }
 
-    // Only debug updates for monitored channels
-    if (channelMatchDict[newMessage.channel.id]) {
-        console.log('\n=== MESSAGE UPDATED ===');
-        console.log('Channel ID:', newMessage.channel.id);
-        console.log('Message ID:', newMessage.id);
+    // Check if this is a monitored source channel
+    if (!sourceChannelIds.includes(newMessage.channel.id)) {
+        return;
+    }
+    
+    console.log(`\n✏️ Message updated in ${newMessage.channel.name} (${newMessage.channel.id})`);
+    
+    // Get or create webhook for this channel
+    const webhookUrl = await getOrCreateWebhook(newMessage.channel, client);
+    
+    if (!webhookUrl) {
+        console.error(`❌ Failed to get webhook for channel ${newMessage.channel.name}`);
+        return;
+    }
+    
+    try {
+        const webhook = new WebhookClient({ url: webhookUrl });
         
         // Check for components in updated message with slip ID extraction
         if (newMessage.components && newMessage.components.length > 0) {
@@ -443,7 +600,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
                         const customId = component.custom_id || component.customId || component.id;
                         
                         if (customId === 'view_slip') {
-                            console.log(`\n� VIEW_SLIP BUTTON DETECTED:`);
+                            console.log(`\n🎮 VIEW_SLIP BUTTON DETECTED:`);
                             console.log(`This button would normally reveal the unblurred slip.`);
                             console.log(`Since you're generating these slips, you can use the identifiers above`);
                             console.log(`to correlate this preview with your original unblurred data.`);
@@ -453,16 +610,11 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
             });
             
             console.log('🎯 === END SLIP ID EXTRACTION ===\n');
-        } else {
-            console.log('No components in updated message');
         }
-        console.log('=== END UPDATE DEBUG ===\n');
-    }
-
-    // check if channel id is in channelMatchDict
-    if (channelMatchDict[newMessage.channel.id]) {
-        const webhook = new WebhookClient({ url: channelMatchDict[newMessage.channel.id] });
+        
+        // Send updated content
         if (newMessage.embeds.length > 0) {
+            console.log(`📤 Forwarding updated embed(s)...`);
             const embed = newMessage.embeds[0];
 
             // make new embed
@@ -513,22 +665,33 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
                     embeds: [newEmbed]
                 });
             }
+            console.log(`✅ Updated embed(s) forwarded`);
         }
+        
         if (newMessage.attachments.size > 0) {
+            console.log(`📎 Forwarding updated attachment(s)...`);
             for (const attachment of newMessage.attachments.values()) {
                 await webhook.send({
                     username: BOT_USERNAME,
                     files: [attachment.url]
                 });
             }
+            console.log(`✅ Updated attachment(s) forwarded`);
         }
 
         if (newMessage.content && newMessage.content.length > 0) {
+            console.log(`💬 Forwarding updated text content...`);
             await webhook.send({
                 username: BOT_USERNAME,
                 content: newMessage.content,
             });
+            console.log(`✅ Updated text content forwarded`);
         }
+        
+        console.log(`\n✅ Updated message successfully mirrored from ${newMessage.channel.name}\n`);
+        
+    } catch (error) {
+        console.error(`❌ Error forwarding updated message from ${newMessage.channel.name}:`, error.message);
     }
 });
 
