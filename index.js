@@ -158,8 +158,7 @@ async function getOrCreateWebhook(sourceChannel, client) {
             
             if (!targetCategory) {
                 console.log(`🆕 Creating category: ${sourceCategoryName}`);
-                targetCategory = await targetGuild.channels.create({
-                    name: sourceCategoryName,
+                targetCategory = await targetGuild.channels.create(sourceCategoryName, {
                     type: 4 // Category type
                 });
             } else {
@@ -176,11 +175,9 @@ async function getOrCreateWebhook(sourceChannel, client) {
         
         if (!targetChannel) {
             console.log(`🆕 Creating channel: ${sourceChannelName}`);
-            targetChannel = await targetGuild.channels.create({
-                name: sourceChannelName,
+            targetChannel = await targetGuild.channels.create(sourceChannelName, {
                 type: 0, // Text channel
-                parent: categoryId,
-                reason: `Auto-created for mirroring from ${sourceChannelName}`
+                parent: categoryId
             });
             console.log(`✅ Created channel: ${targetChannel.name} (${targetChannel.id})`);
         } else {
@@ -189,10 +186,9 @@ async function getOrCreateWebhook(sourceChannel, client) {
         
         // Create webhook in target channel
         console.log(`🔗 Creating webhook in ${targetChannel.name}...`);
-        const webhook = await targetChannel.createWebhook({
-            name: BOT_USERNAME || 'Mirror Bot',
-            reason: `Auto-created for mirroring from ${sourceChannelName}`
-        });
+        const webhook = await targetChannel.createWebhook(
+            BOT_USERNAME || 'Mirror Bot'
+        );
         
         console.log(`✅ Created webhook: ${webhook.url.substring(0, 50)}...`);
         
