@@ -263,17 +263,6 @@ Check the console output for detailed error messages. Every operation is logged 
 - ❌ Error details with descriptions
 - 🔍 Processing steps
 
-## 🔄 Migration from Old Version
-
-If you're upgrading from the manual webhook version:
-
-1. **Keep your CHANNEL_X entries** - don't delete those!
-2. **Remove all WEBHOOK_X entries** - they're not needed anymore
-3. **Add TARGET_GUILD_ID** - this is where mirrors will be created
-4. **Run the bot** - it will create new channels and webhooks automatically
-
-**Your old webhooks won't be used** - the bot creates fresh ones in your target server.
-
 ## 📦 What Gets Created
 
 ### In Your Target Server
@@ -288,6 +277,11 @@ If you're upgrading from the manual webhook version:
 
 **Note:** `webhooks.json` is in `.gitignore` for security - webhook URLs should not be committed.
 
-## 📜 License
+## Socials
 
-Use at your own risk. Discord selfbots violate Discord's Terms of Service.
+Created & maintained by Soham Mitra (SohamXYZ)
+
+- 🌐 Website: [https://sohamxyz.com](https://sohamxyz.com)
+- 📧 Email: soham@sohamxyz.com
+- 💬 Discord: sohamxyz
+- 🧠 bots/selfbots/automation/dev inquiries welcome!
