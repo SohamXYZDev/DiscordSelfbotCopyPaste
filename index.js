@@ -442,37 +442,11 @@ client.on('messageCreate', async message => {
                 thumbnail: embed.thumbnail ? { url: embed.thumbnail.url } : undefined
             };
 
-            // Collect any image URLs to send as attachments
-            const imageUrls = [];
-            if (embed.image && embed.image.url) {
-                imageUrls.push(embed.image.url);
-            }
-            if (embed.thumbnail && embed.thumbnail.url) {
-                imageUrls.push(embed.thumbnail.url);
-            }
-
-            // send to webhook
-            if (imageUrls.length > 0) {
-                // Send embed and images separately to ensure images are visible
-                await webhook.send({
-                    username: BOT_USERNAME,
-                    embeds: [newEmbed]
-                });
-                
-                // Send images as separate attachments
-                for (const imageUrl of imageUrls) {
-                    await webhook.send({
-                        username: BOT_USERNAME,
-                        files: [imageUrl]
-                    });
-                }
-            } else {
-                // No images, just send the embed
-                await webhook.send({
-                    username: BOT_USERNAME,
-                    embeds: [newEmbed]
-                });
-            }
+            // Send embed with images included
+            await webhook.send({
+                username: BOT_USERNAME,
+                embeds: [newEmbed]
+            });
             console.log(`✅ Embed(s) forwarded`);
         }
         
@@ -514,7 +488,9 @@ client.on('messageCreate', async message => {
     }
 });
 
-// Handle message updates
+// Handle message updates (DISABLED to prevent duplicate forwarding)
+// Uncomment if you need to forward edited messages
+/*
 client.on('messageUpdate', async (oldMessage, newMessage) => {
     // Ignore own messages
     if (newMessage.author.id === client.user.id) {
@@ -651,37 +627,11 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
                 thumbnail: embed.thumbnail ? { url: embed.thumbnail.url } : undefined
             };
 
-            // Collect any image URLs to send as attachments
-            const imageUrls = [];
-            if (embed.image && embed.image.url) {
-                imageUrls.push(embed.image.url);
-            }
-            if (embed.thumbnail && embed.thumbnail.url) {
-                imageUrls.push(embed.thumbnail.url);
-            }
-
-            // send to webhook
-            if (imageUrls.length > 0) {
-                // Send embed and images separately to ensure images are visible
-                await webhook.send({
-                    username: BOT_USERNAME,
-                    embeds: [newEmbed]
-                });
-                
-                // Send images as separate attachments
-                for (const imageUrl of imageUrls) {
-                    await webhook.send({
-                        username: BOT_USERNAME,
-                        files: [imageUrl]
-                    });
-                }
-            } else {
-                // No images, just send the embed
-                await webhook.send({
-                    username: BOT_USERNAME,
-                    embeds: [newEmbed]
-                });
-            }
+            // Send embed with images included
+            await webhook.send({
+                username: BOT_USERNAME,
+                embeds: [newEmbed]
+            });
             console.log(`✅ Updated embed(s) forwarded`);
         }
         
@@ -711,5 +661,6 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
         console.error(`❌ Error forwarding updated message from ${newMessage.channel.name}:`, error.message);
     }
 });
+*/
 
 client.login(process.env.TOKEN);
