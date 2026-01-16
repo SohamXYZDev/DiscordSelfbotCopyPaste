@@ -9,6 +9,13 @@ const TARGET_GUILD_ID = process.env.TARGET_GUILD_ID;
 const TARGET_CATEGORY_ID = process.env.TARGET_CATEGORY_ID || null;
 const COPY_CATEGORY_STRUCTURE = process.env.COPY_CATEGORY_STRUCTURE === 'true';
 const WEBHOOKS_FILE = path.join(__dirname, 'webhooks.json');
+const CHANNELS_FILE = path.join(__dirname, 'channels.json');
+
+// New modes
+const USE_BOT_MODE = process.env.USE_BOT_MODE === 'true';
+const BOT_TOKEN = process.env.BOT_TOKEN || null;
+const SOURCE_GUILD_ID = process.env.SOURCE_GUILD_ID || null;
+const FULL_SERVER_COPY = process.env.FULL_SERVER_COPY === 'true';
 
 // Storage for channel mappings: { sourceChannelId: { webhookUrl, targetChannelId, targetChannelName } }
 let channelWebhookMap = {};
@@ -80,29 +87,94 @@ function extractSlipIdentifiers(message) {
 }
 
 // Load source channel IDs from .env (supports unlimited channels)
-const sourceChannelIds = [];
+let sourceChannelIds = [];
 let channelCount = 0;
 
-console.log('🔍 Loading source channel IDs from .env...');
-for (let i = 1; i <= 200; i++) {
-    const channelKey = `CHANNEL_${i}`;
-    const channelId = process.env[channelKey];
-    
-    if (!channelId) {
-        if (channelCount > 0) {
-            break; // Stop if we've found channels and now hit a gap
+// Function to load channels from JSON file
+function loadChannelsFromFile() {
+    try {
+        if (fs.existsSync(CHANNELS_FILE)) {
+            const data = fs.readFileSync(CHANNELS_FILE, 'utf8');
+            const config = JSON.parse(data);
+            const newChannels = config.channels || [];
+            
+            const added = newChannels.filter(ch => !sourceChannelIds.includes(ch));
+            const removed = sourceChannelIds.filter(ch => !newChannels.includes(ch));
+            
+            sourceChannelIds = [...newChannels];
+            channelCount = sourceChannelIds.length;
+            
+            if (added.length > 0) {
+                console.log(`✅ Added ${added.length} new channel(s):`, added);
+            }
+            if (removed.length > 0) {
+                console.log(`🗑️ Removed ${removed.length} channel(s):`, removed);
+            }
+            
+            console.log(`📊 Total channels loaded: ${channelCount}`);
+            return true;
         }
-        continue; // Skip gaps in numbering
+    } catch (error) {
+        console.error('❌ Error loading channels from file:', error.message);
     }
-    
-    sourceChannelIds.push(channelId);
-    channelCount++;
-    console.log(`✅ Loaded source channel ${i}: ${channelId}`);
+    return false;
 }
 
-if (channelCount === 0) {
-    console.error('❌ No source channels configured! Add CHANNEL_1, CHANNEL_2, etc. to .env');
-    process.exit(1);
+// Watch for changes to channels.json
+function watchChannelsFile() {
+    console.log('👀 Watching channels.json for changes...');
+    fs.watch(CHANNELS_FILE, (eventType, filename) => {
+        if (eventType === 'change') {
+            console.log('\n🔄 Detected change in channels.json, reloading...');
+            setTimeout(() => {
+                loadChannelsFromFile();
+            }, 100); // Small delay to ensure file is fully written
+        }
+    });
+}
+
+if (FULL_SERVER_COPY) {
+    if (!SOURCE_GUILD_ID) {
+        console.error('❌ FULL_SERVER_COPY enabled but SOURCE_GUILD_ID not configured!');
+        process.exit(1);
+    }
+    console.log(`🌐 FULL SERVER COPY MODE enabled for server: ${SOURCE_GUILD_ID}`);
+    console.log('📡 Will monitor ALL channels in the source server');
+} else {
+    console.log('🔍 Loading source channel IDs...');
+    
+    // First try loading from channels.json
+    const loadedFromFile = loadChannelsFromFile();
+    
+    // If channels.json doesn't exist or is empty, fall back to .env
+    if (!loadedFromFile || channelCount === 0) {
+        console.log('📝 Loading from .env file...');
+        for (let i = 1; i <= 200; i++) {
+            const channelKey = `CHANNEL_${i}`;
+            const channelId = process.env[channelKey];
+            
+            if (!channelId) {
+                if (channelCount > 0) {
+                    break; // Stop if we've found channels and now hit a gap
+                }
+                continue; // Skip gaps in numbering
+            }
+            
+            sourceChannelIds.push(channelId);
+            channelCount++;
+            console.log(`✅ Loaded source channel ${i}: ${channelId}`);
+        }
+    }
+    
+    // Start watching for changes to channels.json
+    if (fs.existsSync(CHANNELS_FILE)) {
+        watchChannelsFile();
+    }
+
+    if (channelCount === 0) {
+        console.error('❌ No source channels configured! Add CHANNEL_1, CHANNEL_2, etc. to .env');
+        process.exit(1);
+    }
 }
 
 if (!TARGET_GUILD_ID) {
@@ -110,13 +182,21 @@ if (!TARGET_GUILD_ID) {
     process.exit(1);
 }
 
-console.log(`\n📊 Total source channels to monitor: ${channelCount}`);
+console.log(`\n📊 Mode: ${USE_BOT_MODE ? '🤖 BOT MODE' : '🪝 WEBHOOK MODE'}`);
+if (FULL_SERVER_COPY) {
+    console.log(`🌐 Full server copy: ENABLED (Source: ${SOURCE_GUILD_ID})`);
+} else {
+    console.log(`📊 Total source channels to monitor: ${channelCount}`);
+}
 console.log(`🎯 Target guild ID: ${TARGET_GUILD_ID}`);
 if (TARGET_CATEGORY_ID) {
     console.log(`📁 Target category ID: ${TARGET_CATEGORY_ID}`);
 }
 if (COPY_CATEGORY_STRUCTURE) {
     console.log(`📋 Category structure copying: ENABLED`);
+}
+if (USE_BOT_MODE && BOT_TOKEN) {
+    console.log(`🤖 Bot mode: Using separate bot account for forwarding`);
 }
 
 // Load existing webhook mappings
@@ -195,17 +275,19 @@ async function getOrCreateWebhook(sourceChannel, client) {
             console.log(`✅ Found existing channel: ${targetChannel.name} (${targetChannel.id})`);
         }
         
-        // Create webhook in target channel
-        console.log(`🔗 Creating webhook in ${targetChannel.name}...`);
-        const webhook = await targetChannel.createWebhook(
-            BOT_USERNAME || 'Mirror Bot'
-        );
+        // Create webhook in target channel (skip if bot mode only)
+        let webhook = null;
+        if (!USE_BOT_MODE || !BOT_TOKEN) {
+            console.log(`🔗 Creating webhook in ${targetChannel.name}...`);
+            webhook = await targetChannel.createWebhook(
+                BOT_USERNAME || 'Mirror Bot'
+            );
+            console.log(`✅ Created webhook: ${webhook.url.substring(0, 50)}...`);
+        }
         
-        console.log(`✅ Created webhook: ${webhook.url.substring(0, 50)}...`);
-        
-        // Store mapping
+        // Store mapping (works for both webhook and bot mode)
         channelWebhookMap[sourceChannelId] = {
-            webhookUrl: webhook.url,
+            webhookUrl: webhook?.url || null,
             targetChannelId: targetChannel.id,
             targetChannelName: targetChannel.name,
             sourceChannelName: sourceChannelName,
@@ -214,7 +296,7 @@ async function getOrCreateWebhook(sourceChannel, client) {
         
         saveWebhookMappings();
         
-            return webhook.url;
+            return webhook?.url || targetChannel.id;
         
         } catch (error) {
             console.error(`❌ Error creating webhook for ${sourceChannelName}:`, error.message);
@@ -239,11 +321,89 @@ const client = new Client({
     checkUpdate: false
 });
 
+// Bot client for bot mode (if enabled)
+let botClient = null;
+if (USE_BOT_MODE && BOT_TOKEN) {
+    botClient = new Client({
+        checkUpdate: false
+    });
+    
+    botClient.once('ready', () => {
+        console.log(`🤖 Bot logged in as ${botClient.user.tag}`);
+    });
+    
+    botClient.login(BOT_TOKEN).catch(err => {
+        console.error('❌ Failed to login bot:', err.message);
+        console.log('⚠️ Continuing in webhook mode only');
+        botClient = null;
+    });
+}
+
 client.once('ready', async () => { 
     console.log(`\n✅ Logged in as ${client.user.tag}`);
+    
+    // If full server copy mode, populate channel IDs from the source server
+    if (FULL_SERVER_COPY && SOURCE_GUILD_ID) {
+        try {
+            const sourceGuild = await client.guilds.fetch(SOURCE_GUILD_ID);
+            const textChannels = sourceGuild.channels.cache.filter(ch => ch.type === 0); // Text channels only
+            sourceChannelIds = textChannels.map(ch => ch.id);
+            console.log(`🌐 Loaded ${sourceChannelIds.length} text channels from source server: ${sourceGuild.name}`);
+            textChannels.forEach(ch => console.log(`   - ${ch.name} (${ch.id})`));
+        } catch (error) {
+            console.error(`❌ Failed to load source server channels: ${error.message}`);
+            process.exit(1);
+        }
+    }
+    
     console.log(`📡 Monitoring ${sourceChannelIds.length} source channels`);
     console.log(`🔄 Ready to mirror messages!\n`);
 });
+
+// Helper function to forward message using bot mode
+async function forwardWithBot(message, targetChannel) {
+    try {
+        const payload = {
+            content: message.content || undefined
+        };
+        
+        // Add embeds
+        if (message.embeds.length > 0) {
+            payload.embeds = message.embeds.map(embed => ({
+                title: embed.title || undefined,
+                description: embed.description || undefined,
+                url: embed.url || undefined,
+                color: embed.color || undefined,
+                timestamp: embed.timestamp || undefined,
+                footer: embed.footer ? {
+                    text: embed.footer.text,
+                    icon_url: embed.footer.iconURL
+                } : undefined,
+                image: embed.image ? { url: embed.image.url } : undefined,
+                thumbnail: embed.thumbnail ? { url: embed.thumbnail.url } : undefined,
+                author: embed.author ? {
+                    name: embed.author.name,
+                    icon_url: embed.author.iconURL,
+                    url: embed.author.url
+                } : undefined,
+                fields: embed.fields || undefined
+            }));
+        }
+        
+        // Add attachments
+        if (message.attachments.size > 0) {
+            payload.files = Array.from(message.attachments.values()).map(att => att.url);
+        }
+        
+        // Send the message
+        const sentMessage = await targetChannel.send(payload);
+        
+        return sentMessage;
+    } catch (error) {
+        console.error(`❌ Bot mode forwarding error: ${error.message}`);
+        return null;
+    }
+}
 
 client.on('messageCreate', async message => {
     // Ignore own messages
@@ -261,7 +421,40 @@ client.on('messageCreate', async message => {
     console.log(`   Content: ${message.content ? message.content.substring(0, 50) + '...' : 'No text'}`);
     console.log(`   Embeds: ${message.embeds.length}, Attachments: ${message.attachments.size}`);
     
-    // Get or create webhook for this channel
+    // Bot mode: use bot to send directly
+    if (USE_BOT_MODE && botClient) {
+        // Get or create target channel (reuse webhook mapping storage for channel IDs)
+        let targetChannelId = channelWebhookMap[message.channel.id]?.targetChannelId;
+        
+        if (!targetChannelId) {
+            // Create channel if it doesn't exist
+            const result = await getOrCreateWebhook(message.channel, client);
+            targetChannelId = channelWebhookMap[message.channel.id]?.targetChannelId;
+        }
+        
+        if (!targetChannelId) {
+            console.error(`❌ Failed to get target channel for ${message.channel.name}`);
+            return;
+        }
+        
+        try {
+            const targetChannel = await botClient.channels.fetch(targetChannelId);
+            if (!targetChannel) {
+                console.error(`❌ Bot cannot access target channel: ${targetChannelId}`);
+                return;
+            }
+            
+            console.log(`🤖 Forwarding via bot to ${targetChannel.name}...`);
+            await forwardWithBot(message, targetChannel);
+            console.log(`✅ Message forwarded via bot mode\n`);
+            return;
+        } catch (error) {
+            console.error(`❌ Bot mode error: ${error.message}`);
+            return;
+        }
+    }
+    
+    // Webhook mode (original behavior)
     const webhookUrl = await getOrCreateWebhook(message.channel, client);
     
     if (!webhookUrl) {
