@@ -1,0 +1,27 @@
+{
+  "targetGuildId": "your_target_guild_id_here",
+  "sourceGuildId": "",
+
+  "modes": {
+    "useBotMode": false,
+    "fullServerCopy": false,
+    "autoCreateChannels": false
+  },
+
+  "channels": {
+    "source_channel_id_1": "target_channel_id_1",
+    "source_channel_id_2": "target_channel_id_2",
+    "source_channel_id_3": "target_channel_id_3"
+  },
+
+  "categorySettings": {
+    "targetCategoryId": "",
+    "copyCategoryStructure": false
+  },
+
+  "botSettings": {
+    "username": "Bot"
+  }
+
+  // For auto-create mode: set autoCreateChannels:true and use array: ["source_id_1", "source_id_2"]
+}

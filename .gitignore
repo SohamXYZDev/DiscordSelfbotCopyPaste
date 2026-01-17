@@ -4,6 +4,9 @@
 # Webhook storage (contains sensitive webhook URLs)
 webhooks.json
 
+# Configuration (may contain private IDs)
+config.json
+
 # Node modules
 node_modules/
 

@@ -4,18 +4,73 @@ const path = require('path');
 const axios = require('axios');
 require('dotenv').config();
 
-const BOT_USERNAME = process.env.BOT_USERNAME || "Bot";
-const TARGET_GUILD_ID = process.env.TARGET_GUILD_ID;
-const TARGET_CATEGORY_ID = process.env.TARGET_CATEGORY_ID || null;
-const COPY_CATEGORY_STRUCTURE = process.env.COPY_CATEGORY_STRUCTURE === 'true';
 const WEBHOOKS_FILE = path.join(__dirname, 'webhooks.json');
-const CHANNELS_FILE = path.join(__dirname, 'channels.json');
+const CONFIG_FILE = path.join(__dirname, 'config.json');
 
-// New modes
-const USE_BOT_MODE = process.env.USE_BOT_MODE === 'true';
+// Load configuration from config.json
+let config = {
+    targetGuildId: null,
+    modes: {
+        useBotMode: false,
+        fullServerCopy: false,
+        autoCreateChannels: true
+    },
+    sourceGuildId: null,
+    channels: [],
+    categorySettings: {
+        targetCategoryId: null,
+        copyCategoryStructure: false
+    },
+    botSettings: {
+        username: 'Bot'
+    }
+};
+
+function loadConfig() {
+    try {
+        if (fs.existsSync(CONFIG_FILE)) {
+            const data = fs.readFileSync(CONFIG_FILE, 'utf8');
+            const loadedConfig = JSON.parse(data);
+            config = { ...config, ...loadedConfig };
+            console.log('📂 Loaded configuration from config.json');
+        } else {
+            console.log('⚠️ config.json not found, using defaults and .env fallback');
+        }
+    } catch (error) {
+        console.error('❌ Error loading config.json:', error.message);
+    }
+}
+
+// Load config on startup
+loadConfig();
+
+// Watch for changes to config.json
+function watchConfigFile() {
+    console.log('👀 Watching config.json for changes...');
+    fs.watch(CONFIG_FILE, (eventType, filename) => {
+        if (eventType === 'change') {
+            console.log('\n🔄 Detected change in config.json, reloading...');
+            setTimeout(() => {
+                loadConfig();
+                loadChannelsFromConfig();
+            }, 100);
+        }
+    });
+}
+
+// Tokens (sensitive - keep in .env)
+const TOKEN = process.env.TOKEN;
 const BOT_TOKEN = process.env.BOT_TOKEN || null;
-const SOURCE_GUILD_ID = process.env.SOURCE_GUILD_ID || null;
-const FULL_SERVER_COPY = process.env.FULL_SERVER_COPY === 'true';
+
+// Configuration values (prioritize config.json, fallback to .env)
+const BOT_USERNAME = config.botSettings.username;
+const TARGET_GUILD_ID = config.targetGuildId || process.env.TARGET_GUILD_ID;
+const TARGET_CATEGORY_ID = config.categorySettings.targetCategoryId || process.env.TARGET_CATEGORY_ID || null;
+const COPY_CATEGORY_STRUCTURE = config.categorySettings.copyCategoryStructure || process.env.COPY_CATEGORY_STRUCTURE === 'true';
+const USE_BOT_MODE = config.modes.useBotMode || process.env.USE_BOT_MODE === 'true';
+const SOURCE_GUILD_ID = config.sourceGuildId || process.env.SOURCE_GUILD_ID || null;
+const FULL_SERVER_COPY = config.modes.fullServerCopy || process.env.FULL_SERVER_COPY === 'true';
+const AUTO_CREATE_CHANNELS = config.modes.autoCreateChannels !== false && process.env.AUTO_CREATE_CHANNELS !== 'false';
 
 // Storage for channel mappings: { sourceChannelId: { webhookUrl, targetChannelId, targetChannelName } }
 let channelWebhookMap = {};
@@ -86,22 +141,77 @@ function extractSlipIdentifiers(message) {
     return identifiers;
 }
 
-// Load source channel IDs from .env (supports unlimited channels)
+// Load source channel IDs from config or .env (supports unlimited channels)
 let sourceChannelIds = [];
 let channelCount = 0;
+let channelMappings = {}; // Maps source channel ID to target channel ID
 
-// Function to load channels from JSON file
+// Function to load channels from config
+function loadChannelsFromConfig() {
+    try {
+        // Support both array format and object mapping format
+        let newChannels = [];
+        let newMappings = {};
+        
+        if (Array.isArray(config.channels)) {
+            // Array format: ["channel_id_1", "channel_id_2"]
+            newChannels = config.channels;
+        } else if (typeof config.channels === 'object' && config.channels !== null) {
+            // Object format: {"source_id": "target_id"}
+            newChannels = Object.keys(config.channels);
+            newMappings = config.channels;
+        }
+        
+        const added = newChannels.filter(ch => !sourceChannelIds.includes(ch));
+        const removed = sourceChannelIds.filter(ch => !newChannels.includes(ch));
+        
+        sourceChannelIds = [...newChannels];
+        channelMappings = { ...newMappings };
+        channelCount = sourceChannelIds.length;
+        
+        if (added.length > 0) {
+            console.log(`✅ Added ${added.length} new channel(s):`, added);
+        }
+        if (removed.length > 0) {
+            console.log(`🗑️ Removed ${removed.length} channel(s):`, removed);
+        }
+        
+        console.log(`📊 Total channels loaded: ${channelCount}`);
+        if (Object.keys(newMappings).length > 0) {
+            console.log(`🗺️ Manual channel mappings: ${Object.keys(newMappings).length}`);
+        }
+        return true;
+    } catch (error) {
+        console.error('❌ Error loading channels from config:', error.message);
+    }
+    return false;
+}
+
+// Function to load channels from JSON file (legacy support)
 function loadChannelsFromFile() {
     try {
-        if (fs.existsSync(CHANNELS_FILE)) {
-            const data = fs.readFileSync(CHANNELS_FILE, 'utf8');
-            const config = JSON.parse(data);
-            const newChannels = config.channels || [];
+        if (fs.existsSync(CONFIG_FILE)) {
+            const data = fs.readFileSync(CONFIG_FILE, 'utf8');
+            const loadedConfig = JSON.parse(data);
+            
+            // Support both array format and object mapping format
+            let newChannels = [];
+            let newMappings = {};
+            
+            if (Array.isArray(loadedConfig.channels)) {
+                // Array format: ["channel_id_1", "channel_id_2"]
+                newChannels = loadedConfig.channels;
+            } else if (typeof loadedConfig.channels === 'object') {
+                // Object format: {"source_id": "target_id"}
+                newChannels = Object.keys(loadedConfig.channels);
+                newMappings = loadedConfig.channels;
+            }
             
             const added = newChannels.filter(ch => !sourceChannelIds.includes(ch));
             const removed = sourceChannelIds.filter(ch => !newChannels.includes(ch));
             
             sourceChannelIds = [...newChannels];
+            channelMappings = { ...newMappings };
             channelCount = sourceChannelIds.length;
             
             if (added.length > 0) {
@@ -112,6 +222,9 @@ function loadChannelsFromFile() {
             }
             
             console.log(`📊 Total channels loaded: ${channelCount}`);
+            if (Object.keys(newMappings).length > 0) {
+                console.log(`🗺️ Manual channel mappings: ${Object.keys(newMappings).length}`);
+            }
             return true;
         }
     } catch (error) {
@@ -120,17 +233,9 @@ function loadChannelsFromFile() {
     return false;
 }
 
-// Watch for changes to channels.json
+// Watch for changes to config.json
 function watchChannelsFile() {
-    console.log('👀 Watching channels.json for changes...');
-    fs.watch(CHANNELS_FILE, (eventType, filename) => {
-        if (eventType === 'change') {
-            console.log('\n🔄 Detected change in channels.json, reloading...');
-            setTimeout(() => {
-                loadChannelsFromFile();
-            }, 100); // Small delay to ensure file is fully written
-        }
-    });
+    watchConfigFile();
 }
 
 if (FULL_SERVER_COPY) {
@@ -143,11 +248,11 @@ if (FULL_SERVER_COPY) {
 } else {
     console.log('🔍 Loading source channel IDs...');
     
-    // First try loading from channels.json
-    const loadedFromFile = loadChannelsFromFile();
+    // First try loading from config.json
+    const loadedFromConfig = loadChannelsFromConfig();
     
-    // If channels.json doesn't exist or is empty, fall back to .env
-    if (!loadedFromFile || channelCount === 0) {
+    // If config.json doesn't exist or is empty, fall back to .env
+    if (!loadedFromConfig || channelCount === 0) {
         console.log('📝 Loading from .env file...');
         for (let i = 1; i <= 200; i++) {
             const channelKey = `CHANNEL_${i}`;
@@ -166,8 +271,8 @@ if (FULL_SERVER_COPY) {
         }
     }
     
-    // Start watching for changes to channels.json
-    if (fs.existsSync(CHANNELS_FILE)) {
+    // Start watching for changes to config.json
+    if (fs.existsSync(CONFIG_FILE)) {
         watchChannelsFile();
     }
 
@@ -189,6 +294,7 @@ if (FULL_SERVER_COPY) {
     console.log(`📊 Total source channels to monitor: ${channelCount}`);
 }
 console.log(`🎯 Target guild ID: ${TARGET_GUILD_ID}`);
+console.log(`🏗️ Auto-create channels: ${AUTO_CREATE_CHANNELS ? 'ENABLED' : 'DISABLED (using manual mappings)'}`);
 if (TARGET_CATEGORY_ID) {
     console.log(`📁 Target category ID: ${TARGET_CATEGORY_ID}`);
 }
@@ -213,6 +319,58 @@ async function getOrCreateWebhook(sourceChannel, client) {
     if (channelWebhookMap[sourceChannelId] && channelWebhookMap[sourceChannelId].webhookUrl) {
         console.log(`✅ Using existing webhook for ${sourceChannelName}`);
         return channelWebhookMap[sourceChannelId].webhookUrl;
+    }
+    
+    // If auto-create is disabled, check for manual mapping
+    if (!AUTO_CREATE_CHANNELS) {
+        const targetChannelId = channelMappings[sourceChannelId];
+        
+        if (!targetChannelId) {
+            console.error(`❌ Auto-create disabled and no manual mapping found for ${sourceChannelName} (${sourceChannelId})`);
+            console.error(`   Add mapping to channels.json: { "channels": { "${sourceChannelId}": "target_channel_id" } }`);
+            return null;
+        }
+        
+        console.log(`🗺️ Using manual mapping to target channel: ${targetChannelId}`);
+        
+        try {
+            const targetGuild = await client.guilds.fetch(TARGET_GUILD_ID);
+            const targetChannel = await targetGuild.channels.fetch(targetChannelId);
+            
+            if (!targetChannel) {
+                console.error(`❌ Target channel not found: ${targetChannelId}`);
+                return null;
+            }
+            
+            console.log(`✅ Found target channel: ${targetChannel.name} (${targetChannelId})`);
+            
+            // Create webhook in target channel (skip if bot mode only)
+            let webhook = null;
+            if (!USE_BOT_MODE || !BOT_TOKEN) {
+                console.log(`🔗 Creating webhook in ${targetChannel.name}...`);
+                webhook = await targetChannel.createWebhook(
+                    BOT_USERNAME || 'Mirror Bot'
+                );
+                console.log(`✅ Created webhook: ${webhook.url.substring(0, 50)}...`);
+            }
+            
+            // Store mapping
+            channelWebhookMap[sourceChannelId] = {
+                webhookUrl: webhook?.url || null,
+                targetChannelId: targetChannel.id,
+                targetChannelName: targetChannel.name,
+                sourceChannelName: sourceChannelName,
+                createdAt: new Date().toISOString(),
+                manualMapping: true
+            };
+            
+            saveWebhookMappings();
+            return webhook?.url || targetChannel.id;
+            
+        } catch (error) {
+            console.error(`❌ Error setting up manual mapping:`, error.message);
+            return null;
+        }
     }
     
     // Check if creation is already in progress for this channel
